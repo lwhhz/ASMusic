@@ -1,0 +1,12 @@
+{
+  "name": "netease-music-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Netease Cloud Music API proxy for the Compose music client",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "NeteaseCloudMusicApi": "4.32.0"
+  }
+}

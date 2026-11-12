@@ -1,0 +1,43 @@
+# --- secrets / signing ---
+keys/
+local.properties
+*.jks
+*.keystore
+*.p12
+
+# --- build output ---
+build/
+*/build/
+.gradle/
+.kotlin/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# --- release artifacts (ship them as GitHub Releases, not in git) ---
+dist/
+
+# --- Node.js native runtime (fetch with scripts/fetch-node-libs.sh) ---
+androidApp/src/main/jniLibs/**/*.so
+
+# --- qa screenshots / scratch ---
+qa/
+*.log
+
+# --- web toolchain ---
+**/node_modules/
+web/**/.pnpm-store/
+web/**/pnpm-lock.yaml
+
+# --- stray screenshots at repo root ---
+/v*.png
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

@@ -1,0 +1,24 @@
+{
+  "name": "amll-bundle",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Offline bundle of AMLL core + lyric parser + Pixi for the Android WebView",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@applemusic-like-lyrics/core": "0.6.0",
+    "@applemusic-like-lyrics/lyric": "1.1.0",
+    "@pixi/filter-bulge-pinch": "^5.0.0",
+    "pixi.js": "7.4.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

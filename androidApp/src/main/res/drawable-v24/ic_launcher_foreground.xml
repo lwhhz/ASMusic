@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Original "stacked layers" mark for the Apps tab. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,30 L78,43 L54,56 L30,43 Z" />
+    <path
+        android:fillColor="#D9FFFFFF"
+        android:pathData="M54,46 L78,59 L54,72 L30,59 Z" />
+    <path
+        android:fillColor="#B3FFFFFF"
+        android:pathData="M54,62 L78,75 L54,88 L30,75 Z" />
+</vector>

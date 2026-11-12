@@ -1,0 +1,284 @@
+package com.kyant.backdrop.catalog.appstore.music
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.catalog.appstore.AS
+import kotlinx.coroutines.delay
+import com.kyant.backdrop.catalog.appstore.Txt
+
+/**
+ * One gradient card per lyric line. The card colors come from the current cover's
+ * dominant palette (sampled on Android) and are rotated per card; the active card
+ * is sharp, the others are dimmed / slightly blurred.
+ *
+ * Long-pressing a card opens the separate AMLV immersive lyric view.
+ * This carousel stays native and stable for the detail page.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun LyricCards(
+    lines: List<LyricLine>,
+    positionMs: Long,
+    wordByWord: Boolean = false,
+    showTranslation: Boolean = true,
+    glow: Float = 0.55f,
+    fontSp: Float = 23f,
+    translationSp: Float = 15f,
+    palette: List<Color> = emptyList(),
+    songSeed: Long = 0L,
+    flow: Boolean = false,
+    onSeek: (Long) -> Unit = {},
+    onLongPress: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val safeLines = lines.ifEmpty { listOf(LyricLine(0, "暂无歌词")) }
+    val size = safeLines.size
+    // Enough cycles to keep the carousel effectively infinite without creating a
+    // 10k+ item index space; LazyRow only composes visible pages anyway.
+    val loops = 40
+    val startPage = size * (loops / 2)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = startPage)
+
+    var currentIndex = 0
+    for (i in safeLines.indices) {
+        if (safeLines[i].timeMs <= positionMs) currentIndex = i
+    }
+    var manualHold by remember { mutableStateOf(false) }
+    var userMoved by remember { mutableStateOf(false) }
+    // Block auto-follow for the first few frames after a song change. Otherwise the
+    // previous song's positionMs can immediately pull the brand-new list away from
+    // the first card before playback resets to 0.
+    var followSuppressed by remember { mutableStateOf(true) }
+    LaunchedEffect(songSeed) {
+        manualHold = false
+        userMoved = false
+        followSuppressed = true
+        listState.scrollToItem(startPage)
+        delay(350)
+        followSuppressed = false
+    }
+
+    // A manual swipe keeps the row where the user left it, without seeking. Playback
+    // follow is suspended until the user taps a card (the new explicit seek action).
+    val dragging by listState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(dragging) {
+        if (dragging) {
+            userMoved = true
+            manualHold = true
+        }
+    }
+
+    LaunchedEffect(currentIndex, userMoved, manualHold, followSuppressed) {
+        if (userMoved || manualHold || followSuppressed) return@LaunchedEffect
+        if (!listState.isScrollInProgress) {
+            val cur = listState.firstVisibleItemIndex
+            val curMod = ((cur % size) + size) % size
+            // An animation cancelled mid-way (lyric changed while the row was still
+            // moving) leaves the card halfway: the index already matches, so nothing
+            // used to correct it again. Realign whenever the offset is not zero.
+            if (curMod == currentIndex && listState.firstVisibleItemScrollOffset != 0) {
+                runCatching { listState.animateScrollToItem(cur) }
+                return@LaunchedEffect
+            }
+            if (curMod != currentIndex) {
+                var delta = currentIndex - curMod
+                if (delta < 0) delta += size
+                runCatching {
+                    // Fast-out-slow-in instead of the default linear-ish scroll.
+                    val info = listState.layoutInfo.visibleItemsInfo
+                    val stride = if (info.size >= 2) info[1].offset - info[0].offset
+                    else info.firstOrNull()?.size ?: 0
+                    if (stride > 0) {
+                        // Manual eased scroll: fast start, slow settle.
+                        val total = delta * stride.toFloat()
+                        val startTime = withFrameNanos { it }
+                        var last = 0f
+                        while (true) {
+                            val now = withFrameNanos { it }
+                            val t = (((now - startTime) / 1_000_000f) / 420f).coerceIn(0f, 1f)
+                            val target = total * FastOutSlowInEasing.transform(t)
+                            listState.scrollBy(target - last)
+                            last = target
+                            if (t >= 1f) break
+                        }
+                    } else {
+                        listState.animateScrollToItem(cur + delta)
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(listState.isScrollInProgress, userMoved) {
+        if (userMoved && !listState.isScrollInProgress) {
+            // Swiping only browses cards. After a short pause, release the manual
+            // hold so the carousel follows the currently playing line again. Tapping
+            // a card still seeks immediately.
+            delay(2_500)
+            userMoved = false
+            manualHold = false
+        }
+    }
+
+    LazyRow(
+        state = listState,
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        flingBehavior = rememberSnapFlingBehavior(
+            lazyListState = listState,
+            snapPosition = SnapPosition.Start
+        )
+    ) {
+        items(size * loops, key = { page -> page },
+            contentType = { _ -> "lyric-card" }) { page ->
+            val index = page % size
+            val line = safeLines[index]
+            val nextTime = if (index + 1 < size) safeLines[index + 1].timeMs else Long.MAX_VALUE
+            val active = positionMs >= line.timeMs && positionMs < nextTime
+            LyricCard(
+                line = line,
+                index = index,
+                total = size,
+                active = active,
+                showTranslation = showTranslation,
+                glow = glow,
+                fontSp = fontSp,
+                translationSp = translationSp,
+                flow = flow,
+                onClick = {
+                    manualHold = false
+                    userMoved = false
+                    onSeek(line.timeMs.coerceAtLeast(0L))
+                },
+                onLongClick = onLongPress,
+                colors = remember(palette, songSeed, index) {
+                    lyricCardColors(palette, songSeed, index)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun LyricCard(
+    line: LyricLine,
+    index: Int,
+    total: Int,
+    active: Boolean,
+    showTranslation: Boolean,
+    glow: Float,
+    fontSp: Float,
+    translationSp: Float,
+    flow: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    colors: List<Color>
+) {
+    val haptics = LocalHapticFeedback.current
+    val textStyle = AS.cardTitle().copy(
+        fontSize = fontSp.sp,
+        lineHeight = (fontSp * 1.38f).sp,
+        color = if (active) Color.White else Color.White.copy(alpha = .63f)
+    )
+    val maxRows = if (showTranslation && !line.translation.isNullOrBlank()) 4 else 5
+    val inactiveBlur = if (!active) Modifier.blur((1.0f + glow * 2.6f).dp) else Modifier
+
+    Box(
+        Modifier
+            .width(240.dp)
+            .height(310.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(AS.Card)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                }
+            )
+    ) {
+        LyricCardArt(colors, index.toLong(), flow, Modifier.fillMaxSize())
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(22.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            BasicText(
+                text = line.text,
+                style = textStyle,
+                maxLines = maxRows,
+                modifier = inactiveBlur
+            )
+            if (showTranslation && !line.translation.isNullOrBlank()) {
+                Spacer(Modifier.height(10.dp))
+                BasicText(
+                    text = line.translation.orEmpty(),
+                    style = AS.body().copy(
+                        fontSize = translationSp.sp,
+                        lineHeight = (translationSp * 1.4f).sp,
+                        color = Color.White.copy(alpha = if (active) .78f else .52f)
+                    ),
+                    maxLines = 3,
+                    modifier = if (!active) Modifier.blur((glow * 3f).dp) else Modifier
+                )
+            }
+        }
+        Txt(
+            "${index + 1} / $total",
+            AS.caption().copy(color = Color.White.copy(.65f)),
+            Modifier.align(Alignment.BottomEnd).padding(16.dp)
+        )
+        Txt(
+            formatLyricTime(line.timeMs),
+            AS.caption().copy(color = Color.White.copy(.5f)),
+            Modifier.align(Alignment.BottomStart).padding(16.dp)
+        )
+    }
+}
+
+private fun formatLyricTime(ms: Long): String {
+    val s = ms / 1000
+    val m = s / 60
+    val sec = s % 60
+    return "$m:${if (sec < 10) "0" else ""}$sec"
+}
