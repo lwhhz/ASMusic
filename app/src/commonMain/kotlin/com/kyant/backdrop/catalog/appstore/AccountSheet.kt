@@ -226,7 +226,7 @@ fun SettingsSheet(
 
             Spacer(Modifier.height(20.dp))
             SheetGroup {
-                SheetValueRow("版本", "1.3.45", onClick = null)
+                SheetValueRow("版本", "1.3.46", onClick = null)
             }
             Spacer(Modifier.height(24.dp))
         }
