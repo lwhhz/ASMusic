@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/icon.png" width="128" alt="ASMusic" />
+
 # 音乐播放器 · ASMusic for Android
 
 **Kotlin Multiplatform + Compose Multiplatform 的音乐播放器**
