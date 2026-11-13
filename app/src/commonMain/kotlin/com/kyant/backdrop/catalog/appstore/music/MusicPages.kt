@@ -1,5 +1,8 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 
@@ -122,7 +125,7 @@ fun TodayPage(
 
 @Composable
 fun NewReleasesPage(
-    scrollState: ScrollState,
+    scrollState: LazyListState,
     onOpenPlaylist: (Long) -> Unit,
     onOpenSong: (List<Song>, Song) -> Unit,
     onAvatar: () -> Unit,
@@ -140,46 +143,57 @@ fun NewReleasesPage(
 
     val allSongs = releases.flatMap { it.songs }.distinctBy { it.id }
 
-    Column(
-        modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(bottom = BottomSpace)
+    // Lazy: only the visible rows compose, so chart covers no longer all decode at once.
+    LazyColumn(
+        state = scrollState,
+        modifier = modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = BottomSpace)
     ) {
-        LargeHeader("新歌上架", onAvatar)
-        Spacer(Modifier.height(6.dp))
-
-        // Feature slides — horizontally scrollable, same layout as the old Games page.
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val slideWidth = maxWidth - 40.dp
-            Row(
-                Modifier
-                    .padding(start = AS.PagePad)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                releases.forEach { playlist ->
-                    Column(Modifier.width(slideWidth)) {
-                        ReleaseSlide(
-                            playlist,
-                            onClick = { onOpenPlaylist(playlist.id) },
-                            onPlay = {
-                                playlist.songs.firstOrNull()?.let { song ->
-                                    bridge.playFrom(playlist.songs, song)
-                                    bridge.showToast("正在播放 ${song.name}")
+        item(key = "header") {
+            Column {
+                LargeHeader("新歌上架", onAvatar)
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+        item(key = "slides") {
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val slideWidth = maxWidth - 40.dp
+                Row(
+                    Modifier
+                        .padding(start = AS.PagePad)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    releases.forEach { playlist ->
+                        Column(Modifier.width(slideWidth)) {
+                            ReleaseSlide(
+                                playlist,
+                                onClick = { onOpenPlaylist(playlist.id) },
+                                onPlay = {
+                                    playlist.songs.firstOrNull()?.let { song ->
+                                        bridge.playFrom(playlist.songs, song)
+                                        bridge.showToast("正在播放 ${song.name}")
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
+            Spacer(Modifier.height(AS.SectionGap))
         }
-
-        Spacer(Modifier.height(AS.SectionGap))
-        SectionHeader("最新单曲", "刚刚上架的新声音", Modifier.padding(horizontal = AS.PagePad))
-        Spacer(Modifier.height(12.dp))
-        Column(Modifier.padding(horizontal = AS.PagePad)) {
-            allSongs.take(10).forEach { song ->
+        item(key = "latest-header") {
+            Column {
+                SectionHeader(
+                    "最新单曲",
+                    "刚刚上架的新声音",
+                    Modifier.padding(horizontal = AS.PagePad)
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+        items(allSongs.take(10), key = { it.id }) { song ->
+            Box(Modifier.padding(horizontal = AS.PagePad)) {
                 SongRow(
                     song,
                     playing = state.currentSong?.id == song.id && state.playing,
@@ -188,50 +202,46 @@ fun NewReleasesPage(
                 )
             }
         }
-
         if (charts.isNotEmpty()) {
-            Spacer(Modifier.height(28.dp))
-            SectionHeader("排行榜", "网易云全部榜单", Modifier.padding(horizontal = AS.PagePad))
-            Spacer(Modifier.height(14.dp))
-            Column(
-                Modifier.padding(horizontal = AS.PagePad),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
-            ) {
-                charts.chunked(3).forEach { row ->
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        row.forEach { chart ->
-                            Column(
+            item(key = "charts-header") {
+                Column {
+                    Spacer(Modifier.height(28.dp))
+                    SectionHeader(
+                        "排行榜",
+                        "网易云全部榜单",
+                        Modifier.padding(horizontal = AS.PagePad)
+                    )
+                    Spacer(Modifier.height(14.dp))
+                }
+            }
+            items(charts.chunked(3), key = { row -> row.firstOrNull()?.id ?: 0L }) { row ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = AS.PagePad, end = AS.PagePad, bottom = 18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    row.forEach { chart ->
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .tap { onOpenPlaylist(chart.id) }
+                        ) {
+                            Box(
                                 Modifier
-                                    .weight(1f)
-                                    .tap { onOpenPlaylist(chart.id) }
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(14.dp))
                             ) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(1f)
-                                        .clip(RoundedCornerShape(14.dp))
-                                ) {
-                                    CoverImage(chart.coverUrl, chart.id, Modifier.fillMaxSize())
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                Txt(
-                                    chart.name,
-                                    AS.rowTitle().copy(fontSize = 13.sp),
-                                    maxLines = 2
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Txt(
-                                    chart.subtitle,
-                                    AS.caption().copy(fontSize = 11.sp),
-                                    maxLines = 1
-                                )
+                                CoverImage(chart.coverUrl, chart.id, Modifier.fillMaxSize(), requestEdge = 256)
                             }
+                            Spacer(Modifier.height(8.dp))
+                            Txt(chart.name, AS.rowTitle().copy(fontSize = 13.sp), maxLines = 2)
+                            Spacer(Modifier.height(2.dp))
+                            Txt(chart.subtitle, AS.caption().copy(fontSize = 11.sp), maxLines = 1)
                         }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

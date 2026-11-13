@@ -1,5 +1,6 @@
 package com.kyant.backdrop.catalog
 
+import kotlinx.coroutines.sync.withPermit
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -55,7 +56,7 @@ class MusicCache(context: Context) {
     private val ioLock = Mutex()
 
     private val memoryImages = object : LinkedHashMap<String, ImageBitmap>(32, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > 32
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > 64
     }
 
     // ------------------------------------------------------------------
@@ -95,16 +96,33 @@ class MusicCache(context: Context) {
     // Cover images
     // ------------------------------------------------------------------
 
-    suspend fun image(url: String): ImageBitmap? {
-        memoryImages[url]?.let { return it }
+    // List rows only need ~100 px; decoding the stored 800 px JPEG for every row was
+    // the main source of scrolling jank. Decode straight to the requested size and cap
+    // how many decodes run at once.
+    private val decodeGate = kotlinx.coroutines.sync.Semaphore(4)
+
+    suspend fun image(url: String, maxEdge: Int = 512): ImageBitmap? {
+        val key = "$url@$maxEdge"
+        memoryImages[key]?.let { return it }
         val bmp = withContext(Dispatchers.IO) {
-            runCatching {
-                val file = imageFile(url)
-                if (!file.exists()) return@runCatching null
-                BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap()
-            }.getOrNull()
+            decodeGate.withPermit {
+                runCatching {
+                    val file = imageFile(url)
+                    if (!file.exists()) return@runCatching null
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(file.absolutePath, bounds)
+                    var sample = 1
+                    val longest = maxOf(bounds.outWidth, bounds.outHeight)
+                    while (longest / sample > maxEdge) sample *= 2
+                    val opts = BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                    }
+                    BitmapFactory.decodeFile(file.absolutePath, opts)?.asImageBitmap()
+                }.getOrNull()
+            }
         }
-        if (bmp != null) memoryImages[url] = bmp
+        if (bmp != null) memoryImages[key] = bmp
         return bmp
     }
 

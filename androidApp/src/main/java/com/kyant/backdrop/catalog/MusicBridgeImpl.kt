@@ -159,6 +159,7 @@ class MusicBridgeImpl(
         st.amllTtmlSource = config.amllTtmlSource
         st.amllFontFile = config.amllFontFile
         st.amllResumeDelay = config.amllResumeDelay
+        st.heartMode = config.heartMode
         st.kugouKrcEnabled = config.kugouKrcEnabled
         st.lyricSynthWords = config.lyricSynthWords
         st.lyricKeepSung = config.lyricKeepSung
@@ -559,7 +560,7 @@ class MusicBridgeImpl(
         return p
     }
 
-    override suspend fun image(url: String): ImageBitmap? {
+    override suspend fun image(url: String, maxEdge: Int): ImageBitmap? {
         cache.image(url)?.let { return it }
         val bitmap = api.image(url) ?: return null
         return cache.putImage(url, bitmap)
@@ -843,6 +844,32 @@ class MusicBridgeImpl(
     }
 
     override fun next() {
+        if (queue.size <= 1) return
+        // 心动模式：以一半概率插入一首算法推荐（红心歌单 + 当前歌曲）。
+        val direct = api as? NeteaseDirect
+        val currentId = st.currentSong?.id
+        if (st.heartMode && direct != null && st.loggedIn && currentId != null &&
+            kotlin.random.Random.nextFloat() < 0.5f
+        ) {
+            scope.launch {
+                val pick = runCatching { direct.heartRecommend(currentId) }.getOrNull()
+                    ?.firstOrNull { candidate -> queue.none { it.id == candidate.id } }
+                if (pick != null) {
+                    queue = queue + pick
+                    queueIndex = queue.lastIndex
+                    st.playQueue = queue
+                    st.queueIndex = queueIndex
+                    start(pick)
+                } else {
+                    advanceQueue()
+                }
+            }
+            return
+        }
+        advanceQueue()
+    }
+
+    private fun advanceQueue() {
         if (queue.size <= 1) return
         queueIndex = if (st.playMode == PlayMode.Shuffle) {
             // Shuffle stays inside the current queue and never repeats the same song twice.
@@ -1334,6 +1361,11 @@ class MusicBridgeImpl(
     override fun setKeepAmllWarm(value: Boolean) {
         config.keepAmllWarm = value
         st.keepAmllWarm = value
+    }
+
+    override fun setHeartMode(value: Boolean) {
+        config.heartMode = value
+        st.heartMode = value
     }
 
     override fun setKugouKrcEnabled(value: Boolean) {

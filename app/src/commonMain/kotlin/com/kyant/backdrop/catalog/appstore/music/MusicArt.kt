@@ -50,12 +50,13 @@ private val CoverPalettes: List<List<Color>> = listOf(
 fun CoverImage(
     url: String?,
     seed: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    requestEdge: Int = 512
 ) {
     var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(url) {
         bitmap = if (url.isNullOrBlank()) null else {
-            runCatching { MusicServices.bridge.image(url) }.getOrNull()
+            runCatching { MusicServices.bridge.image(url, requestEdge) }.getOrNull()
         }
     }
     val bmp = bitmap

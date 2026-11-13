@@ -265,6 +265,11 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean("kugou_krc_enabled", false)
         set(value) { prefs.edit().putBoolean("kugou_krc_enabled", value).apply() }
 
+    /** 心动模式：在红心歌单播放时穿插算法推荐（实验性，默认关闭）。 */
+    var heartMode: Boolean
+        get() = prefs.getBoolean("heart_mode", false)
+        set(value) { prefs.edit().putBoolean("heart_mode", value).apply() }
+
     var prefetchNext: Boolean
         get() = prefs.getBoolean("prefetch_next", true)
         set(value) { prefs.edit().putBoolean("prefetch_next", value).apply() }

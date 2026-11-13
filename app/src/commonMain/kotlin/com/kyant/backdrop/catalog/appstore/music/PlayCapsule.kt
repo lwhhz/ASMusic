@@ -93,6 +93,8 @@ fun PlayCapsule(
     onSeek: (Long) -> Unit,
     onOpen: () -> Unit,
     onQuality: () -> Unit = {},
+    heartMode: Boolean = false,
+    onHeart: () -> Unit = {},
     corner: () -> Float = { 1f },
     modifier: Modifier = Modifier
 ) {
@@ -177,7 +179,9 @@ fun PlayCapsule(
                         onToggle = onToggle,
                         onPrevious = onPrevious,
                         onNext = onNext,
-                        onOpen = onOpen
+                        onOpen = onOpen,
+                        heartMode = heartMode,
+                        onHeart = onHeart
                     )
                 }
             }
@@ -197,7 +201,9 @@ fun PlayCapsule(
                         onPrevious = onPrevious,
                         onNext = onNext,
                         onSeek = onSeek,
-                        onQuality = onQuality
+                        onQuality = onQuality,
+                        heartMode = heartMode,
+                        onHeart = onHeart
                     )
                 }
             }
@@ -215,7 +221,9 @@ private fun CompactControls(
     onToggle: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    heartMode: Boolean,
+    onHeart: () -> Unit
 ) {
     // Content fades / defocuses while travelling; the order flips at the midpoint.
     val contentAlpha = 1f - fade * 0.98f
@@ -311,7 +319,9 @@ private fun ExpandedControls(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onSeek: (Long) -> Unit,
-    onQuality: () -> Unit
+    onQuality: () -> Unit,
+    heartMode: Boolean,
+    onHeart: () -> Unit
 ) {
     val state = MusicServices.state
     val bridge = MusicServices.bridge
@@ -350,11 +360,31 @@ private fun ExpandedControls(
                 Modifier.align(Alignment.Center),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 心动模式：仅详情页展开态显示，位于「上一首」左侧
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (heartMode) AS.Blue.copy(alpha = 0.18f) else Color.Transparent)
+                        .tap(onHeart),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Txt(
+                        "♥",
+                        AS.body().copy(
+                            fontSize = 19.sp,
+                            color = if (heartMode) AS.Blue else AS.Text3
+                        )
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
                 SkipButton(false, onPrevious, size = 44.dp)
                 Spacer(Modifier.width(26.dp))
                 PlayPauseButton(playing, onToggle, size = 56.dp, filled = true)
                 Spacer(Modifier.width(26.dp))
                 SkipButton(true, onNext, size = 44.dp)
+                // Mirror the heart so the play button stays visually centred.
+                Spacer(Modifier.width(48.dp))
             }
             // Quality picker sits to the right of the next button.
             CircleIconButton(

@@ -1,5 +1,26 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -81,6 +102,57 @@ fun PlayPauseButton(
     }
 }
 
+/**
+ * 单行文字：放得下就静态显示，放不下才从左到右循环滚动。
+ * 用于歌曲名等可能超长的文本，替代直接截断。
+ */
+@Composable
+fun MarqueeText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    speedDpPerSecond: Float = 36f
+) {
+    val measurer = rememberTextMeasurer()
+    val layout = remember(text, style) { measurer.measure(AnnotatedString(text), style) }
+    BoxWithConstraints(modifier.clipToBounds()) {
+        val density = LocalDensity.current
+        val containerPx = constraints.maxWidth.toFloat()
+        val textPx = layout.size.width.toFloat()
+        if (textPx <= containerPx || containerPx <= 0f) {
+            BasicText(text = text, style = style, maxLines = 1)
+        } else {
+            // Continuous modulo scroll: the second copy slides in exactly where the
+            // first one left, so the loop never pauses or jumps back.
+            val gapPx = with(density) { 32.dp.toPx() }
+            val cycle = textPx + gapPx
+            val speedPx = with(density) { speedDpPerSecond.dp.toPx() }.coerceAtLeast(1f)
+            var offset by remember(text, textPx) { mutableFloatStateOf(0f) }
+            LaunchedEffect(text, textPx, containerPx) {
+                var last = withFrameNanos { it }
+                while (true) {
+                    withFrameNanos { now ->
+                        val dt = (now - last) / 1_000_000_000f
+                        last = now
+                        offset = (offset + dt * speedPx) % cycle
+                    }
+                }
+            }
+            // requiredWidth: without it the parent constraint squeezes the second copy
+            // to zero width, which leaves a blank gap and reads as a restart.
+            val rowWidth = with(density) { (textPx * 2f + gapPx).toDp() }
+            Row(
+                Modifier
+                    .requiredWidth(rowWidth)
+                    .offset { IntOffset(-offset.roundToInt(), 0) }
+            ) {
+                BasicText(text = text, style = style, maxLines = 1)
+                Spacer(Modifier.size(32.dp))
+                BasicText(text = text, style = style, maxLines = 1)
+            }
+        }
+    }
+}
 @Composable
 fun SongRow(
     song: Song,
@@ -99,11 +171,11 @@ fun SongRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp))) {
-                CoverImage(song.coverUrl, song.id, Modifier.fillMaxSize())
+                CoverImage(song.coverUrl, song.id, Modifier.fillMaxSize(), requestEdge = 256)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Txt(song.name, AS.rowTitle(), maxLines = 1)
+                MarqueeText(song.name, AS.rowTitle())
                 Txt("${song.artist} · ${song.album}", AS.subtitle().copy(fontSize = 13.sp), maxLines = 1)
             }
             Spacer(Modifier.width(10.dp))
@@ -176,10 +248,15 @@ fun PlaylistCard(
                     .fillMaxSize()
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xDD000000))))
             )
-            Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    // leave room for the 46dp play button so long titles never sit under it
+                    .padding(start = 20.dp, end = 84.dp, top = 20.dp, bottom = 20.dp)
+            ) {
                 Txt(playlistEyebrow(playlist.kind), AS.eyebrow().copy(color = Color.White.copy(.82f)))
                 Spacer(Modifier.height(8.dp))
-                Txt(first.name, AS.cardTitle().copy(fontSize = 28.sp, color = Color.White), maxLines = 1)
+                MarqueeText(first.name, AS.cardTitle().copy(fontSize = 28.sp, color = Color.White))
                 Txt("${first.artist} · 共 ${playlist.songCount} 首", AS.subtitle().copy(color = Color.White.copy(.8f)), maxLines = 1)
             }
             Box(Modifier.align(Alignment.BottomEnd).padding(20.dp)) {
@@ -236,7 +313,7 @@ fun ReleaseSlide(
     Column(modifier) {
         Txt(if (playlist.songCount > 1) "NEW RELEASE" else "NEW SINGLE", AS.eyebrow())
         Spacer(Modifier.height(6.dp))
-        Txt(playlist.name, AS.cardTitle().copy(fontSize = 26.sp, lineHeight = 31.sp), maxLines = 2)
+        MarqueeText(playlist.name, AS.cardTitle().copy(fontSize = 26.sp, lineHeight = 31.sp))
         Txt(playlist.subtitle, AS.subtitle().copy(fontSize = 18.sp), maxLines = 1)
         Spacer(Modifier.height(14.dp))
         Box(

@@ -1,5 +1,6 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
@@ -150,12 +151,12 @@ fun MusicApp() {
     var immersiveLines by remember { mutableStateOf<List<LyricLine>>(emptyList()) }
 
     val todayScroll = rememberScrollState()
-    val newScroll = rememberScrollState()
+    val newScroll = androidx.compose.foundation.lazy.rememberLazyListState()
     val mineScroll = rememberScrollState()
     val statsScroll = rememberScrollState()
     val searchScroll = rememberScrollState()
     val detailScroll = rememberScrollState()
-    val playlistScroll = rememberScrollState()
+    val playlistScroll = androidx.compose.foundation.lazy.rememberLazyListState()
     val artistScroll = rememberScrollState()
     val customScroll = rememberScrollState()
     val fineTuneScroll = rememberScrollState()
@@ -182,7 +183,7 @@ fun MusicApp() {
             scope.launch {
                 when (idx) {
                     0 -> todayScroll.animateScrollTo(0)
-                    1 -> newScroll.animateScrollTo(0)
+                    1 -> newScroll.animateScrollToItem(0)
                     2 -> mineScroll.animateScrollTo(0)
                     3 -> statsScroll.animateScrollTo(0)
                     4 -> searchScroll.animateScrollTo(0)
@@ -241,13 +242,13 @@ fun MusicApp() {
 
     fun openPlaylist(id: Long) {
         stack = stack + "p:$id"
-        scope.launch { playlistScroll.scrollTo(0) }
+        scope.launch { playlistScroll.scrollToItem(0) }
     }
 
     fun openAlbum(id: Long) {
         if (id <= 0L) return
         stack = stack + "a:$id"
-        scope.launch { playlistScroll.scrollTo(0) }
+        scope.launch { playlistScroll.scrollToItem(0) }
     }
 
     fun openArtist(id: Long, name: String) {
@@ -836,6 +837,8 @@ private fun CapsuleDock(
                 onToggle = { bridge.toggle() },
                 onPrevious = { bridge.previous() },
                 onNext = { bridge.next() },
+                heartMode = state.heartMode,
+                onHeart = { bridge.setHeartMode(!state.heartMode) },
                 onSeek = { bridge.seek(it) },
                 onOpen = onOpen,
                 onQuality = { state.qualitySheetOpen = true },
@@ -848,7 +851,7 @@ private fun CapsuleDock(
 @Composable
 private fun PlaylistDetailPage(
     playlistId: Long,
-    scrollState: ScrollState,
+    scrollState: androidx.compose.foundation.lazy.LazyListState,
     onBack: () -> Unit,
     onOpenSong: (List<Song>, Song) -> Unit,
     onAvatar: () -> Unit,
@@ -952,13 +955,15 @@ private fun PlaylistDetailPage(
     }
 
     Box(Modifier.fillMaxSize()) {
-    Column(
-        Modifier
+    androidx.compose.foundation.lazy.LazyColumn(
+        state = scrollState,
+        modifier = Modifier
             .fillMaxSize()
-            .background(AS.Bg)
-            .verticalScroll(scrollState)
-            .padding(bottom = 250.dp)
+            .background(AS.Bg),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 250.dp)
     ) {
+        item(key = "header") {
+        Column {
         Row(Modifier.fillMaxWidth().padding(16.dp)) {
             CircleButton(CircleKind.Back, onBack)
         }
@@ -1029,13 +1034,17 @@ private fun PlaylistDetailPage(
             Txt("播放全部", AS.body().copy(fontSize = 15.sp, color = Color.White))
         }
         Spacer(Modifier.height(20.dp))
+        }
+        }
         if (songs.isEmpty()) {
-            Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-                Txt(if (loading) "正在加载…" else "这张歌单暂时没有可播放的歌曲", AS.caption())
+            item(key = "empty") {
+                Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
+                    Txt(if (loading) "正在加载…" else "这张歌单暂时没有可播放的歌曲", AS.caption())
+                }
             }
         } else {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                songs.forEach { song ->
+            itemsIndexed(songs, key = { _, song -> song.id }) { _, song ->
+                Box(Modifier.padding(horizontal = 16.dp)) {
                     SongRow(
                         song,
                         playing = state.currentSong?.id == song.id && state.playing,
@@ -1044,13 +1053,17 @@ private fun PlaylistDetailPage(
                     )
                 }
             }
-            Spacer(Modifier.height(18.dp))
-            Txt(
-                playlistSummary(songs),
-                AS.caption().copy(color = AS.Text3),
-                Modifier.padding(horizontal = 16.dp)
-            )
-            Spacer(Modifier.height(10.dp))
+            item(key = "summary") {
+                Column {
+                    Spacer(Modifier.height(18.dp))
+                    Txt(
+                        playlistSummary(songs),
+                        AS.caption().copy(color = AS.Text3),
+                        Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
         }
     }
     }

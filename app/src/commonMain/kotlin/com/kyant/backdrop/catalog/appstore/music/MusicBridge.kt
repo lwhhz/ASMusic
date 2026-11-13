@@ -89,6 +89,7 @@ class MusicState {
     /** Absolute path of an imported font file; empty = system family. */
     var amllFontFile by mutableStateOf("")
     var amllMaskProfanity by mutableStateOf(true)
+    var heartMode by mutableStateOf(false)
     var kugouKrcEnabled by mutableStateOf(false)
     var lyricSynthWords by mutableStateOf(true)
     var lyricKeepSung by mutableStateOf(true)
@@ -151,7 +152,7 @@ interface MusicBridge {
     suspend fun songSocial(id: Long): SongSocial? = null
     suspend fun stats(): PlayStats = Fixtures.stats
     suspend fun profile(): UserProfile? = if (state.loggedIn) Fixtures.profile else null
-    suspend fun image(url: String): ImageBitmap? = null
+    suspend fun image(url: String, maxEdge: Int = 512): ImageBitmap? = null
     /**
      * Representative cover colors (ARGB ints), dominant first — drives the lyric-card
      * gradients and the share-poster aurora. Null when the cover cannot be loaded.
@@ -271,6 +272,7 @@ interface MusicBridge {
     }
     fun setAmllFontFile(value: String) { state.amllFontFile = value }
     fun setAmllMaskProfanity(value: Boolean) { state.amllMaskProfanity = value }
+    fun setHeartMode(value: Boolean) { state.heartMode = value }
     fun setKugouKrcEnabled(value: Boolean) { state.kugouKrcEnabled = value }
     fun setLyricSynthWords(value: Boolean) { state.lyricSynthWords = value }
     fun setLyricKeepSung(value: Boolean) { state.lyricKeepSung = value }
