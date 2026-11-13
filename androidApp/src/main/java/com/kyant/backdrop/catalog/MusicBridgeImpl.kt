@@ -1,5 +1,8 @@
 package com.kyant.backdrop.catalog
 
+import com.kyant.backdrop.catalog.appstore.music.PosterRatio
+import com.kyant.backdrop.catalog.appstore.music.PosterBg
+import com.kyant.backdrop.catalog.appstore.music.PosterConfig
 import com.kyant.backdrop.catalog.appstore.music.KugouKrc
 import com.kyant.backdrop.catalog.appstore.music.ArtistInfo
 import android.Manifest
@@ -162,6 +165,18 @@ class MusicBridgeImpl(
         st.amllFontFile = config.amllFontFile
         st.amllResumeDelay = config.amllResumeDelay
         st.amllStaticBg = config.amllStaticBg
+        st.posterConfig = PosterConfig(
+            bg = PosterBg.entries.getOrElse(config.posterBg) { PosterBg.Blur },
+            blurLevel = config.posterBlur.coerceIn(1, 3),
+            ratio = PosterRatio.entries.getOrElse(config.posterRatio) { PosterRatio.Story9x16 },
+            lyricLines = config.posterLines.coerceIn(1, 4),
+            fontScale = config.posterFont,
+            showTranslation = config.posterTrans,
+            showInfoCard = config.posterInfo,
+            showAvatar = config.posterAvatar,
+            showAlbum = config.posterAlbum,
+            watermark = config.posterWatermark
+        )
         st.heartMode = config.heartMode
         st.kugouKrcEnabled = config.kugouKrcEnabled
         st.lyricSynthWords = config.lyricSynthWords
@@ -231,6 +246,9 @@ class MusicBridgeImpl(
 
     override suspend fun newReleases(): List<Playlist> =
         cachedPlaylists("newsong", Fixtures.newReleases) { api.newReleases() }
+
+    override suspend fun newAlbums(): List<Playlist> =
+        cachedPlaylists("newalbum", emptyList()) { api.newAlbums() }
 
     override suspend fun dailySongs(): List<Song> =
         cachedSongs("daily", ttlMs = TTL_DAY) { api.dailySongs() } ?: Fixtures.dailySongs
@@ -591,7 +609,8 @@ class MusicBridgeImpl(
                     translation = translation,
                     cover = cover,
                     avatar = avatar,
-                    nickname = st.nickname
+                    nickname = st.nickname,
+                    posterConfig = st.posterConfig
                 )
             }
             runCatching { sharePosterBitmap(poster) }
@@ -612,10 +631,15 @@ class MusicBridgeImpl(
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
+            // The system share sheet reads the URI to build its thumbnail: it needs the
+            // grant as ClipData as well, otherwise the preview stays a placeholder.
+            clipData = android.content.ClipData.newRawUri("poster", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        val chooser = Intent.createChooser(send, "分享歌词海报")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val chooser = Intent.createChooser(send, "分享歌词海报").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
         appContext.startActivity(chooser)
     }
 
@@ -1391,6 +1415,20 @@ class MusicBridgeImpl(
     override fun setKeepAmllWarm(value: Boolean) {
         config.keepAmllWarm = value
         st.keepAmllWarm = value
+    }
+
+    override fun setPosterConfig(value: PosterConfig) {
+        st.posterConfig = value
+        config.posterBg = value.bg.ordinal
+        config.posterBlur = value.blurLevel
+        config.posterRatio = value.ratio.ordinal
+        config.posterLines = value.lyricLines
+        config.posterFont = value.fontScale
+        config.posterTrans = value.showTranslation
+        config.posterInfo = value.showInfoCard
+        config.posterAvatar = value.showAvatar
+        config.posterAlbum = value.showAlbum
+        config.posterWatermark = value.watermark
     }
 
     override fun setAmllStaticBg(value: Boolean) {

@@ -314,7 +314,13 @@ fun MusicApp() {
             } else {
                 lines.firstOrNull()
             }
-            bridge.shareLyricPoster(song, active?.text, active?.translation)
+            // Hand the poster the current line plus the following ones: the
+            // poster's "歌词行数" setting decides how many of them are drawn.
+            val startIndex = lines.indexOfFirst { it === active }.coerceAtLeast(0)
+            val block = lines.drop(startIndex).take(4)
+                .joinToString("\n") { it.text }
+                .ifBlank { active?.text.orEmpty() }
+            bridge.shareLyricPoster(song, block, active?.translation)
         }
     }
 
@@ -351,7 +357,7 @@ fun MusicApp() {
                 PageTransition(tab) { tabIndex ->
                     when (tabIndex) {
                         0 -> TodayPage(todayScroll, ::openPlaylist, ::openSong, { accountOpen = true }, { pickerOpen = true })
-                        1 -> NewReleasesPage(newScroll, ::openPlaylist, ::openSongFromList, { accountOpen = true })
+                        1 -> NewReleasesPage(newScroll, ::openPlaylist, ::openAlbum, ::openSongFromList, { accountOpen = true })
                         2 -> MyPlaylistsPage(mineScroll, ::openPlaylist, ::openSongFromList, { accountOpen = true })
                         3 -> StatsPage(statsScroll, { accountOpen = true }, { goalOpen = true })
                         4 -> MusicSearchPage(searchScroll, ::openSongFromList, ::openPlaylist, { accountOpen = true })

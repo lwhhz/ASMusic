@@ -89,6 +89,7 @@ class MusicState {
     /** Absolute path of an imported font file; empty = system family. */
     var amllFontFile by mutableStateOf("")
     var amllMaskProfanity by mutableStateOf(true)
+    var posterConfig by mutableStateOf(PosterConfig())
     var amllStaticBg by mutableStateOf(false)
     var heartMode by mutableStateOf(false)
     var kugouKrcEnabled by mutableStateOf(false)
@@ -129,6 +130,8 @@ interface MusicBridge {
     // ---- catalogue ----
     suspend fun search(q: String): SearchResults = Fixtures.search(q)
     suspend fun newReleases(): List<Playlist> = Fixtures.newReleases
+    /** 最新专辑，用于新歌页顶部大卡。 */
+    suspend fun newAlbums(): List<Playlist> = emptyList()
     /** Netease "all charts" list (排行榜). */
     suspend fun toplists(): List<Playlist> = emptyList()
     suspend fun dailySongs(): List<Song> = Fixtures.dailySongs
@@ -273,6 +276,7 @@ interface MusicBridge {
     }
     fun setAmllFontFile(value: String) { state.amllFontFile = value }
     fun setAmllMaskProfanity(value: Boolean) { state.amllMaskProfanity = value }
+    fun setPosterConfig(value: PosterConfig) { state.posterConfig = value }
     fun setAmllStaticBg(value: Boolean) { state.amllStaticBg = value }
     fun setHeartMode(value: Boolean) { state.heartMode = value }
     fun setKugouKrcEnabled(value: Boolean) { state.kugouKrcEnabled = value }

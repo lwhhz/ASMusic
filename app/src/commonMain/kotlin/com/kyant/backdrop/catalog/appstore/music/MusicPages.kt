@@ -127,6 +127,7 @@ fun TodayPage(
 fun NewReleasesPage(
     scrollState: LazyListState,
     onOpenPlaylist: (Long) -> Unit,
+    onOpenAlbum: (Long) -> Unit,
     onOpenSong: (List<Song>, Song) -> Unit,
     onAvatar: () -> Unit,
     modifier: Modifier = Modifier
@@ -134,12 +135,16 @@ fun NewReleasesPage(
     val state = MusicServices.state
     val bridge = MusicServices.bridge
     var releases by remember { mutableStateOf(Fixtures.newReleases) }
+    var albums by remember { mutableStateOf<List<Playlist>>(emptyList()) }
     var charts by remember { mutableStateOf<List<Playlist>>(emptyList()) }
 
     LaunchedEffect(state.loggedIn) {
         releases = runCatching { bridge.newReleases() }.getOrDefault(Fixtures.newReleases)
+        albums = runCatching { bridge.newAlbums() }.getOrDefault(emptyList())
         charts = runCatching { bridge.toplists() }.getOrDefault(emptyList())
     }
+    // 大卡展示最新专辑；专辑没有预载歌曲，点击直接进专辑页。
+    val showcase = albums.ifEmpty { releases }
 
     val allSongs = releases.flatMap { it.songs }.distinctBy { it.id }
 
@@ -151,7 +156,7 @@ fun NewReleasesPage(
     ) {
         item(key = "header") {
             Column {
-                LargeHeader("新歌上架", onAvatar)
+                LargeHeader("最新专辑", onAvatar)
                 Spacer(Modifier.height(6.dp))
             }
         }
@@ -164,15 +169,21 @@ fun NewReleasesPage(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    releases.forEach { playlist ->
+                    showcase.forEach { playlist ->
                         Column(Modifier.width(slideWidth)) {
                             ReleaseSlide(
                                 playlist,
-                                onClick = { onOpenPlaylist(playlist.id) },
+                                onClick = {
+                                    if (playlist.songs.isEmpty()) onOpenAlbum(playlist.id)
+                                    else onOpenPlaylist(playlist.id)
+                                },
                                 onPlay = {
-                                    playlist.songs.firstOrNull()?.let { song ->
+                                    val song = playlist.songs.firstOrNull()
+                                    if (song != null) {
                                         bridge.playFrom(playlist.songs, song)
                                         bridge.showToast("正在播放 ${song.name}")
+                                    } else {
+                                        onOpenAlbum(playlist.id)
                                     }
                                 }
                             )

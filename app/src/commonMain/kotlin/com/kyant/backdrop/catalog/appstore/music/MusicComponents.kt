@@ -293,7 +293,14 @@ fun ReleaseSlide(
 ) {
     val first = playlist.songs.firstOrNull()
     Column(modifier) {
-        Txt(if (playlist.songCount > 1) "NEW RELEASE" else "NEW SINGLE", AS.eyebrow())
+        Txt(
+            when {
+                playlist.songs.isEmpty() -> "NEW ALBUM"
+                playlist.songCount > 1 -> "NEW RELEASE"
+                else -> "NEW SINGLE"
+            },
+            AS.eyebrow()
+        )
         Spacer(Modifier.height(6.dp))
         MarqueeText(playlist.name, AS.cardTitle().copy(fontSize = 26.sp, lineHeight = 31.sp))
         Txt(playlist.subtitle, AS.subtitle().copy(fontSize = 18.sp), maxLines = 1)
@@ -306,19 +313,26 @@ fun ReleaseSlide(
                 .background(AS.Card)
                 .tap(onClick)
         ) {
-            CoverImage(first?.coverUrl, playlist.id, Modifier.fillMaxSize())
+            CoverImage(playlist.coverUrl ?: first?.coverUrl, playlist.id, Modifier.fillMaxSize())
             ArtworkBlurBand(
-                first?.coverUrl,
+                playlist.coverUrl ?: first?.coverUrl,
                 playlist.id,
                 96.dp,
                 Modifier.align(Alignment.BottomCenter)
             )
+            // Same treatment as the home big card, but the darkening only starts
+            // below the midpoint so the artwork keeps its brightness.
             Box(
                 Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(76.dp)
-                    .background(Color(0x8C101012))
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.00f to Color.Transparent,
+                            0.55f to Color.Transparent,
+                            0.80f to Color(0x4D000000),
+                            1.00f to Color(0xE6000000)
+                        )
+                    )
             )
             Row(
                 Modifier
@@ -328,10 +342,6 @@ fun ReleaseSlide(
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))) {
-                    CoverImage(first?.coverUrl, playlist.id, Modifier.fillMaxSize())
-                }
-                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Txt(first?.name ?: playlist.name, AS.rowTitle().copy(fontSize = 16.sp), maxLines = 1)
                     Txt(

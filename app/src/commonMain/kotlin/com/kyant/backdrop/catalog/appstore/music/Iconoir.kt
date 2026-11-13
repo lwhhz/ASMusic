@@ -351,11 +351,8 @@ object Iconoir {
             viewportWidth = 24f, viewportHeight = 24f
         )
             .addPath(
-                pathData = addPathNodes("M9.883 2.207a1.9 1.9 0 0 1 2.087 1.522l.025 .167l.005 .104v7a1 1 0 0 0 .883 .993l.117 .007h6.8a2 2 0 0 1 2 2a1 1 0 0 1 -.026 .226a10 10 0 1 1 -12.27 -11.933l.27 -.067l.11 -.02z"),
-                fill = SolidColor(Color.Black)
-            )
-            .addPath(
-                pathData = addPathNodes("M14 3.5v5.5a1 1 0 0 0 1 1h5.5a1 1 0 0 0 .943 -1.332a10 10 0 0 0 -6.11 -6.111a1 1 0 0 0 -1.333 .943z"),
+                // Hand-authored bar chart: neither filled set ships bar-chart glyphs.
+                pathData = addPathNodes("M4 13h4v7H4zM10 8h4v12h-4zM16 4h4v16h-4z"),
                 fill = SolidColor(Color.Black)
             )
             .build()

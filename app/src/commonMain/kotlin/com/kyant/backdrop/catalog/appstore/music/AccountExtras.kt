@@ -1092,6 +1092,29 @@ fun CustomizePage(
                 AS.caption()
             )
             Spacer(Modifier.height(22.dp))
+            Txt("分享海报", AS.caption().copy(color = AS.Text3))
+            Spacer(Modifier.height(8.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(AS.Card)
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                SettingValueLink(
+                    "分享海报",
+                    "${state.posterConfig.ratio.label} · " +
+                        when (state.posterConfig.bg) {
+                            PosterBg.Blur -> "模糊封面"
+                            PosterBg.Gradient -> "流光渐变"
+                            PosterBg.Solid -> "纯色"
+                        }
+                ) { onOpenFineTune(FineTuneGroup.Poster) }
+            }
+            Spacer(Modifier.height(10.dp))
+            Txt("长按歌词卡或点分享生成海报；这里的设置只影响导出图，不影响界面。", AS.caption())
+
+            Spacer(Modifier.height(22.dp))
             Txt("歌词源", AS.caption().copy(color = AS.Text3))
             Spacer(Modifier.height(8.dp))
             Column(

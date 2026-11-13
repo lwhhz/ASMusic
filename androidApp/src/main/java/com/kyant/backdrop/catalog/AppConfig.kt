@@ -275,6 +275,46 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean("amll_static_bg", false)
         set(value) { prefs.edit().putBoolean("amll_static_bg", value).apply() }
 
+    var posterBg: Int
+        get() = prefs.getInt("poster_bg", 0)
+        set(value) { prefs.edit().putInt("poster_bg", value).apply() }
+
+    var posterBlur: Int
+        get() = prefs.getInt("poster_blur", 2)
+        set(value) { prefs.edit().putInt("poster_blur", value).apply() }
+
+    var posterRatio: Int
+        get() = prefs.getInt("poster_ratio", 1)
+        set(value) { prefs.edit().putInt("poster_ratio", value).apply() }
+
+    var posterLines: Int
+        get() = prefs.getInt("poster_lines", 4)
+        set(value) { prefs.edit().putInt("poster_lines", value).apply() }
+
+    var posterFont: Float
+        get() = prefs.getFloat("poster_font", 1f)
+        set(value) { prefs.edit().putFloat("poster_font", value).apply() }
+
+    var posterTrans: Boolean
+        get() = prefs.getBoolean("poster_trans", true)
+        set(value) { prefs.edit().putBoolean("poster_trans", value).apply() }
+
+    var posterInfo: Boolean
+        get() = prefs.getBoolean("poster_info", true)
+        set(value) { prefs.edit().putBoolean("poster_info", value).apply() }
+
+    var posterAvatar: Boolean
+        get() = prefs.getBoolean("poster_avatar", true)
+        set(value) { prefs.edit().putBoolean("poster_avatar", value).apply() }
+
+    var posterAlbum: Boolean
+        get() = prefs.getBoolean("poster_album", true)
+        set(value) { prefs.edit().putBoolean("poster_album", value).apply() }
+
+    var posterWatermark: String
+        get() = prefs.getString("poster_watermark", " By · ASMusic") ?: " By · ASMusic"
+        set(value) { prefs.edit().putString("poster_watermark", value).apply() }
+
     var prefetchNext: Boolean
         get() = prefs.getBoolean("prefetch_next", true)
         set(value) { prefs.edit().putBoolean("prefetch_next", value).apply() }

@@ -11,6 +11,8 @@ import android.graphics.Shader
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import com.kyant.backdrop.catalog.appstore.music.PosterBg
+import com.kyant.backdrop.catalog.appstore.music.PosterConfig
 
 /**
  * Renders the lyric share poster (1080×1920).
@@ -34,8 +36,11 @@ object LyricPoster {
         translation: String?,
         cover: Bitmap?,
         avatar: Bitmap?,
-        nickname: String?
+        nickname: String?,
+        posterConfig: PosterConfig = PosterConfig()
     ): Bitmap {
+        val W = posterConfig.ratio.widthPx
+        val H = posterConfig.ratio.heightPx
         val out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         val palette = cover?.let { CoverPalette.extract(it, 4) }.orEmpty()
@@ -43,16 +48,35 @@ object LyricPoster {
 
         // ---- background: blurred cover + aurora lights from the cover palette ----
         canvas.drawColor(Color.rgb(12, 12, 16))
-        if (cover != null) {
-            // Cheap, strong blur: downscale hard, then upscale with bilinear filtering.
-            val tiny = Bitmap.createScaledBitmap(cover, 24, 24, true)
-            val wash = Bitmap.createScaledBitmap(tiny, W, H, true)
+        if (cover != null && posterConfig.bg == PosterBg.Blur) {
+            // Same treatment as the immersive static background: centre-crop the cover
+            // to the poster aspect (never stretched) and blur it by downscale+upscale.
+            val targetAspect = W.toFloat() / H
+            val srcW: Int
+            val srcH: Int
+            if (cover.width.toFloat() / cover.height > targetAspect) {
+                srcH = cover.height
+                srcW = (srcH * targetAspect).toInt().coerceAtLeast(1)
+            } else {
+                srcW = cover.width
+                srcH = (srcW / targetAspect).toInt().coerceAtLeast(1)
+            }
+            val cropped = Bitmap.createBitmap(
+                cover,
+                (cover.width - srcW) / 2,
+                (cover.height - srcH) / 2,
+                srcW,
+                srcH
+            )
+            val wash = gaussianBlur(cropped, W, H, posterConfig.blurLevel)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
             canvas.drawBitmap(wash, 0f, 0f, paint)
+        } else if (cover != null && posterConfig.bg == PosterBg.Solid) {
+            canvas.drawColor(dominant)
         } else {
             canvas.drawColor(dominant)
+            drawAurora(canvas, palette.ifEmpty { listOf(dominant) })
         }
-        drawAurora(canvas, palette.ifEmpty { listOf(dominant) })
         // Dark scrim so white text stays legible over any cover.
         canvas.drawColor(Color.argb(150, 8, 8, 12))
 
@@ -61,7 +85,7 @@ object LyricPoster {
             color = Color.WHITE
             textSize = 34f
         }
-        if (avatar != null || !nickname.isNullOrBlank()) {
+        if (posterConfig.showAvatar && (avatar != null || !nickname.isNullOrBlank())) {
             val nick = nickname?.takeIf { it.isNotBlank() } ?: "网易云用户"
             val textW = namePaint.measureText(nick)
             if (avatar != null) {
@@ -86,19 +110,25 @@ object LyricPoster {
         }
 
         // ---- center lyric ----
-        val lyric = line?.takeIf { it.isNotBlank() } ?: songName
+        // Hard-cap the line count here: StaticLayout.setMaxLines alone does not drop
+        // explicit "\n" breaks, which is why "1 行" still rendered four.
+        val lyric = (line?.takeIf { it.isNotBlank() } ?: songName)
+            .split("\n")
+            .take(posterConfig.lyricLines.coerceIn(1, 4))
+            .joinToString("\n")
         val lyricPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 64f
+            textSize = 64f * posterConfig.fontScale
             isFakeBoldText = true
         }
         val lyricLayout = StaticLayout.Builder
             .obtain(lyric, 0, lyric.length, lyricPaint, W - 220)
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
             .setLineSpacing(18f, 1f)
-            .setMaxLines(4)
+            .setMaxLines(posterConfig.lyricLines)
+            .setEllipsize(android.text.TextUtils.TruncateAt.END)
             .build()
-        val translationLayout = translation?.takeIf { it.isNotBlank() }?.let { t ->
+        val translationLayout = translation?.takeIf { it.isNotBlank() && posterConfig.showTranslation }?.let { t ->
             val p = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.argb(215, 255, 255, 255)
                 textSize = 38f
@@ -124,6 +154,17 @@ object LyricPoster {
         }
 
         // ---- bottom song info card ----
+        if (!posterConfig.showInfoCard) {
+            if (posterConfig.watermark.isNotBlank()) {
+                val wp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.argb(150, 235, 235, 245)
+                    textSize = 30f
+                    textAlign = Paint.Align.CENTER
+                }
+                canvas.drawText(posterConfig.watermark, W / 2f, H - 90f, wp)
+            }
+            return out
+        }
         val cardLeft = 72f
         val cardRight = W - 72f
         val cardBottom = H - 210f
@@ -168,10 +209,20 @@ object LyricPoster {
         }
         val textX = cardLeft + 40 + coverSize + 32
         val maxTextW = cardRight - 32 - textX
-        canvas.drawText(ellipsize(songName, titlePaint, maxTextW), textX, cardTop + 96, titlePaint)
-        canvas.drawText(ellipsize(artist, subPaint, maxTextW), textX, cardTop + 156, subPaint)
-        if (album.isNotBlank() && album != "单曲") {
-            canvas.drawText(ellipsize(album, subPaint, maxTextW), textX, cardTop + 204, subPaint)
+        // Vertically centre the text block against the cover instead of using fixed
+        // baselines (the old ones sat visibly low in the card).
+        val showAlbumLine = posterConfig.showAlbum && album.isNotBlank() && album != "单曲"
+        val titleH = titlePaint.fontMetrics.let { it.descent - it.ascent }
+        val subH = subPaint.fontMetrics.let { it.descent - it.ascent }
+        val blockH = titleH + 16f + subH + if (showAlbumLine) 12f + subH else 0f
+        val coverTop = cardTop + 40
+        var baseline = coverTop + (coverSize - blockH) / 2f - titlePaint.fontMetrics.ascent
+        canvas.drawText(ellipsize(songName, titlePaint, maxTextW), textX, baseline, titlePaint)
+        baseline += titleH + 16f - titlePaint.fontMetrics.descent + subPaint.fontMetrics.ascent + subH * .35f
+        canvas.drawText(ellipsize(artist, subPaint, maxTextW), textX, baseline, subPaint)
+        if (showAlbumLine) {
+            baseline += subH * 1.15f
+            canvas.drawText(ellipsize(album, subPaint, maxTextW), textX, baseline, subPaint)
         }
 
         // ---- brand line ----
@@ -180,7 +231,75 @@ object LyricPoster {
             textSize = 30f
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText("音乐 · 网易云歌词海报", W / 2f, cardBottom + 76f, brandPaint)
+        if (posterConfig.watermark.isNotBlank()) {
+            canvas.drawText(posterConfig.watermark, W / 2f, cardBottom + 76f, brandPaint)
+        }
+        return out
+    }
+
+
+    /**
+     * Gaussian approximation: downscale, run three box-blur passes (a 3-pass box blur is
+     * very close to a true Gaussian), then upscale. Cheap enough to run per share.
+     */
+    private fun gaussianBlur(src: Bitmap, w: Int, h: Int, level: Int): Bitmap {
+        val factor = when (level) { 1 -> 0.09f; 3 -> 0.035f; else -> 0.055f }
+        val sw = (w * factor).toInt().coerceAtLeast(8)
+        val sh = (h * factor).toInt().coerceAtLeast(8)
+        var small = Bitmap.createScaledBitmap(src, sw, sh, true)
+        val radius = when (level) { 1 -> 2; 3 -> 6; else -> 4 }
+        repeat(3) { small = boxBlur(small, radius) }
+        return Bitmap.createScaledBitmap(small, w, h, true)
+    }
+
+    private fun boxBlur(src: Bitmap, radius: Int): Bitmap {
+        val w = src.width
+        val h = src.height
+        val inPx = IntArray(w * h)
+        src.getPixels(inPx, 0, w, 0, 0, w, h)
+        val tmp = IntArray(w * h)
+        val outPx = IntArray(w * h)
+        // horizontal
+        for (y in 0 until h) {
+            var sumA = 0; var sumR = 0; var sumG = 0; var sumB = 0
+            val row = y * w
+            for (x in -radius..radius) {
+                val c = inPx[row + x.coerceIn(0, w - 1)]
+                sumA += c ushr 24 and 0xFF; sumR += c ushr 16 and 0xFF
+                sumG += c ushr 8 and 0xFF; sumB += c and 0xFF
+            }
+            val div = radius * 2 + 1
+            for (x in 0 until w) {
+                tmp[row + x] = (sumA / div shl 24) or (sumR / div shl 16) or (sumG / div shl 8) or (sumB / div)
+                val inC = inPx[row + (x + radius + 1).coerceIn(0, w - 1)]
+                val outC = inPx[row + (x - radius).coerceIn(0, w - 1)]
+                sumA += (inC ushr 24 and 0xFF) - (outC ushr 24 and 0xFF)
+                sumR += (inC ushr 16 and 0xFF) - (outC ushr 16 and 0xFF)
+                sumG += (inC ushr 8 and 0xFF) - (outC ushr 8 and 0xFF)
+                sumB += (inC and 0xFF) - (outC and 0xFF)
+            }
+        }
+        // vertical
+        for (x in 0 until w) {
+            var sumA = 0; var sumR = 0; var sumG = 0; var sumB = 0
+            for (y in -radius..radius) {
+                val c = tmp[y.coerceIn(0, h - 1) * w + x]
+                sumA += c ushr 24 and 0xFF; sumR += c ushr 16 and 0xFF
+                sumG += c ushr 8 and 0xFF; sumB += c and 0xFF
+            }
+            val div = radius * 2 + 1
+            for (y in 0 until h) {
+                outPx[y * w + x] = (sumA / div shl 24) or (sumR / div shl 16) or (sumG / div shl 8) or (sumB / div)
+                val inC = tmp[(y + radius + 1).coerceIn(0, h - 1) * w + x]
+                val outC = tmp[(y - radius).coerceIn(0, h - 1) * w + x]
+                sumA += (inC ushr 24 and 0xFF) - (outC ushr 24 and 0xFF)
+                sumR += (inC ushr 16 and 0xFF) - (outC ushr 16 and 0xFF)
+                sumG += (inC ushr 8 and 0xFF) - (outC ushr 8 and 0xFF)
+                sumB += (inC and 0xFF) - (outC and 0xFF)
+            }
+        }
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(outPx, 0, w, 0, 0, w, h)
         return out
     }
 

@@ -37,6 +37,7 @@ enum class FineTuneGroup(val title: String, val note: String) {
     Haze("Haze 效果参数", "覆盖高度是模糊区域总高；过渡是顶部完全不透明的高度，之后才逐渐变透明；模糊强度决定最顶端的峰值模糊。"),
     Lyrics("卡片歌词", "逐字方式、字号与光晕，只作用于歌曲详情页的歌词卡。"),
     Cache("缓存与预加载", "音频缓存上限、下一首预缓存，以及「缓存好再播放」。"),
+    Poster("分享海报", "歌词海报的背景、比例、行数与水印；修改后下一次分享立即生效。"),
     Source("歌词源", "逐字歌词的数据来源。TTML 来自 AMLL 公共库；第三方源默认关闭，开启后歌词数据来自对应平台。"),
     Fluid("沉浸式歌词背景", "长按歌词卡进入沉浸式歌词后生效；背景由当前歌曲封面实时生成。"),
     Immersive(
@@ -261,6 +262,69 @@ fun FineTunePage(
                             if (state.amllResumeDelay < .05f) "立即"
                             else "${state.amllResumeDelay.toInt()} s"
                         ) { bridge.setAmllResumeDelay(it) }
+                    }
+                    FineTuneGroup.Poster -> {
+                        val cfg = state.posterConfig
+                        SettingStepSlider(
+                            "背景样式",
+                            cfg.bg.ordinal.toFloat(),
+                            listOf(0f, 1f, 2f),
+                            when (cfg.bg) {
+                                PosterBg.Blur -> "模糊封面"
+                                PosterBg.Gradient -> "流光渐变"
+                                PosterBg.Solid -> "纯色"
+                            }
+                        ) { bridge.setPosterConfig(cfg.copy(bg = PosterBg.entries[it.roundToInt().coerceIn(0, 2)])) }
+                        SettingDivider()
+                        SettingStepSlider(
+                            "模糊强度",
+                            cfg.blurLevel.toFloat(),
+                            listOf(1f, 2f, 3f),
+                            when (cfg.blurLevel) { 1 -> "轻微"; 3 -> "重度"; else -> "标准" }
+                        ) { bridge.setPosterConfig(cfg.copy(blurLevel = it.roundToInt().coerceIn(1, 3))) }
+                        SettingDivider()
+                        SettingStepSlider(
+                            "比例",
+                            cfg.ratio.ordinal.toFloat(),
+                            listOf(0f, 1f, 2f),
+                            cfg.ratio.label
+                        ) { bridge.setPosterConfig(cfg.copy(ratio = PosterRatio.entries[it.roundToInt().coerceIn(0, 2)])) }
+                        SettingDivider()
+                        SettingStepSlider(
+                            "歌词行数",
+                            cfg.lyricLines.toFloat(),
+                            listOf(1f, 2f, 4f),
+                            "${cfg.lyricLines} 行"
+                        ) { bridge.setPosterConfig(cfg.copy(lyricLines = it.roundToInt().coerceIn(1, 4))) }
+                        SettingDivider()
+                        SettingStepSlider(
+                            "歌词字号",
+                            cfg.fontScale,
+                            listOf(0.85f, 1f, 1.15f),
+                            "${(cfg.fontScale * 100).toInt()}%"
+                        ) { bridge.setPosterConfig(cfg.copy(fontScale = it)) }
+                        SettingDivider()
+                        SettingSwitchRow("显示翻译", "歌词下方附上翻译", cfg.showTranslation) {
+                            bridge.setPosterConfig(cfg.copy(showTranslation = it))
+                        }
+                        SettingDivider()
+                        SettingSwitchRow("显示歌曲信息卡", "底部封面 + 歌名 + 歌手卡片", cfg.showInfoCard) {
+                            bridge.setPosterConfig(cfg.copy(showInfoCard = it))
+                        }
+                        SettingDivider()
+                        SettingSwitchRow("显示头像与昵称", "右上角账号信息", cfg.showAvatar) {
+                            bridge.setPosterConfig(cfg.copy(showAvatar = it))
+                        }
+                        SettingDivider()
+                        SettingSwitchRow("显示专辑名", "信息卡内第三行", cfg.showAlbum) {
+                            bridge.setPosterConfig(cfg.copy(showAlbum = it))
+                        }
+                        SettingDivider()
+                        SettingTextFieldRow(
+                            "水印文案",
+                            cfg.watermark,
+                            "留空则不显示水印"
+                        ) { bridge.setPosterConfig(cfg.copy(watermark = it)) }
                     }
                     FineTuneGroup.Cache -> {
                         SettingStepSlider(

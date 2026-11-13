@@ -150,6 +150,9 @@ class NeteaseApi(private val config: AppConfig) : MusicApi {
             }
     }
 
+    /** 最新专辑：本实现（JS 音源通道）没有专辑接口，返回 null 让上层回退。 */
+    override suspend fun newAlbums(): List<Playlist>? = null
+
     override suspend fun dailySongs(): List<Song>? {
         if (config.cookie.isNullOrBlank()) return null
         val j = get("/recommend/songs") ?: return null

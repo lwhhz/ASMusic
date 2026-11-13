@@ -255,6 +255,32 @@ class NeteaseDirect(private val config: AppConfig) : MusicApi {
         }
     }
 
+    /** 最新上架专辑（不是单曲）。 */
+    override suspend fun newAlbums(): List<Playlist>? {
+        val body = weapi(
+            "/api/album/new",
+            JSONObject().put("area", "ALL").put("limit", 12).put("offset", 0).put("total", true)
+        ).body ?: return null
+        val arr = body.optJSONArray("albums") ?: return null
+        val out = mutableListOf<Playlist>()
+        for (i in 0 until arr.length()) {
+            val a = arr.optJSONObject(i) ?: continue
+            val id = a.optLong("id")
+            if (id <= 0L) continue
+            val artist = a.optJSONObject("artist")?.optString("name").orEmpty()
+            out += Playlist(
+                id = id,
+                name = a.optString("name").ifBlank { "专辑" },
+                subtitle = if (artist.isBlank()) "专辑" else artist,
+                coverUrl = a.optString("picUrl").takeIf { it.isNotBlank() },
+                songCount = a.optInt("size", 0),
+                kind = PlaylistKind.NewRelease,
+                songs = emptyList()
+            )
+        }
+        return out.ifEmpty { null }
+    }
+
     override suspend fun newReleases(): List<Playlist>? {
         val body = weapi(
             "/api/personalized/newsong",

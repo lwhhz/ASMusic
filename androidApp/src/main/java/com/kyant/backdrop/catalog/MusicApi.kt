@@ -29,6 +29,7 @@ interface MusicApi {
     // ---- catalogue ----
     suspend fun search(keyword: String): SearchResults?
     suspend fun newReleases(): List<Playlist>?
+    suspend fun newAlbums(): List<Playlist>?
     suspend fun toplists(): List<Playlist>?
     suspend fun dailySongs(): List<Song>?
     suspend fun personalPlaylists(): List<Playlist>?

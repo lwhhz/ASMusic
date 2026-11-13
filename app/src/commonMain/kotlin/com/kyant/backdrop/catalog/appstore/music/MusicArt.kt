@@ -183,54 +183,7 @@ fun MusicTabIcon(
     )
 }
 
-private fun DrawScope.drawMusicTabIcon(index: Int, color: Color) {
-    val w = size.width
-    val h = size.height
-    val sw = w * .085f
-    when (index) {
-        0 -> { // note = Today
-            drawCircle(color, w * .11f, Offset(w * .36f, h * .70f))
-            drawRoundRect(
-                color, topLeft = Offset(w * .45f, h * .14f),
-                size = Size(w * .065f, h * .56f),
-                cornerRadius = CornerRadius(w * .03f, w * .03f)
-            )
-            val flag = Path().apply {
-                moveTo(w * .51f, h * .14f); lineTo(w * .82f, h * .24f)
-                lineTo(w * .82f, h * .38f); lineTo(w * .51f, h * .28f); close()
-            }
-            drawPath(flag, color)
-        }
-        1 -> { // sparkle = new releases
-            val star = Path().apply {
-                moveTo(w * .5f, h * .06f); lineTo(w * .60f, h * .40f)
-                lineTo(w * .94f, h * .5f); lineTo(w * .60f, h * .60f)
-                lineTo(w * .5f, h * .94f); lineTo(w * .40f, h * .60f)
-                lineTo(w * .06f, h * .5f); lineTo(w * .40f, h * .40f); close()
-            }
-            drawPath(star, color)
-            drawCircle(color, w * .055f, Offset(w * .84f, h * .18f))
-        }
-        2 -> { // person = my playlists
-            drawCircle(color, w * .14f, Offset(w * .5f, h * .34f))
-            drawArc(color, 180f, 180f, true, Offset(w * .22f, h * .52f), Size(w * .56f, h * .52f))
-        }
-        3 -> { // bar chart = stats
-            val heights = listOf(.34f, .58f, .78f)
-            heights.forEachIndexed { i, hh ->
-                drawRoundRect(
-                    color, topLeft = Offset(w * (.20f + i * .22f), h * (1f - hh)),
-                    size = Size(w * .14f, h * hh),
-                    cornerRadius = CornerRadius(w * .04f, w * .04f)
-                )
-            }
-        }
-        else -> { // magnifier = search
-            drawCircle(color, w * .28f, Offset(w * .43f, h * .43f), style = Stroke(sw))
-            drawLine(color, Offset(w * .63f, h * .63f), Offset(w * .88f, h * .88f), sw * 1.3f, StrokeCap.Round)
-        }
-    }
-}
+
 
 /** Fallback when the cover cannot be sampled / has fewer than four usable colors. */
 private val LyricFallbackPalette: List<Color> = listOf(
