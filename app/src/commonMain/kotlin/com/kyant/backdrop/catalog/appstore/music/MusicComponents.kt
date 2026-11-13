@@ -75,30 +75,12 @@ fun PlayPauseButton(
             .tap(onClick),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.size(size * .42f)) {
-            val w = this.size.width
-            val h = this.size.height
-            if (playing) {
-                drawRoundRect(
-                    tint, topLeft = Offset(w * .16f, h * .12f),
-                    size = Size(w * .25f, h * .76f),
-                    cornerRadius = CornerRadius(w * .06f, w * .06f)
-                )
-                drawRoundRect(
-                    tint, topLeft = Offset(w * .59f, h * .12f),
-                    size = Size(w * .25f, h * .76f),
-                    cornerRadius = CornerRadius(w * .06f, w * .06f)
-                )
-            } else {
-                val p = Path().apply {
-                    moveTo(w * .22f, h * .08f)
-                    lineTo(w * .86f, h * .5f)
-                    lineTo(w * .22f, h * .92f)
-                    close()
-                }
-                drawPath(p, tint)
-            }
-        }
+        androidx.compose.foundation.Image(
+            imageVector = if (playing) Iconoir.pause else Iconoir.play,
+            contentDescription = null,
+            modifier = Modifier.size(size * .52f),
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint)
+        )
     }
 }
 

@@ -326,7 +326,41 @@ window.onerror = function (m, src, line, col) {
     else player.pause();
   };
 
+  // ---- 静态背景：封面居中裁切（cover，不拉伸）+ 模糊，替换掉 Pixi 流体背景 ----
+  var staticBgOn = false, staticCover = null, staticLayer = null, staticShade = null;
+
+  function ensureStaticLayer() {
+    if (staticLayer) return;
+    staticShade = document.createElement("div");
+    staticShade.style.cssText =
+      "position:fixed;inset:0;background:#000;opacity:0;transition:opacity .35s ease;" +
+      "z-index:0;pointer-events:none;";
+    staticLayer = document.createElement("div");
+    staticLayer.style.cssText =
+      "position:fixed;inset:-8%;background-size:cover;background-position:center;" +
+      "background-repeat:no-repeat;filter:blur(46px);transform:scale(1.06);opacity:0;" +
+      "transition:opacity .35s ease;z-index:0;pointer-events:none;";
+    document.body.insertBefore(staticShade, document.body.firstChild);
+    document.body.insertBefore(staticLayer, document.body.firstChild);
+  }
+
+  function applyStaticBg() {
+    ensureStaticLayer();
+    if (staticCover) staticLayer.style.backgroundImage = "url(" + staticCover + ")";
+    staticLayer.style.opacity = staticBgOn ? "1" : "0";
+    staticShade.style.opacity = staticBgOn ? "0.32" : "0";
+    var canvases = document.querySelectorAll("canvas");
+    for (var i = 0; i < canvases.length; i++) canvases[i].style.opacity = staticBgOn ? "0" : "";
+  }
+
+  window.amllSetStaticBg = function (on) {
+    staticBgOn = !!on;
+    applyStaticBg();
+  };
+
   window.amllSetCover = function (dataUrl) {
+    staticCover = dataUrl || null;
+    applyStaticBg();
     if (!dataUrl || dataUrl === lastCover) return;
     var bg = ensureBackground();
     if (!bg) return;
@@ -402,7 +436,9 @@ window.onerror = function (m, src, line, col) {
     // context alive but stop burning frames.
     var onScreen = document.documentElement.clientWidth > 60;
     if (background) {
-      if (onScreen) background.resume();
+      // Static cover background: pause the fluid render loop entirely instead of
+      // merely hiding the canvas, otherwise Pixi keeps drawing every frame.
+      if (onScreen && !staticBgOn) background.resume();
       else background.pause();
     }
     if (player && !document.hidden && onScreen) {

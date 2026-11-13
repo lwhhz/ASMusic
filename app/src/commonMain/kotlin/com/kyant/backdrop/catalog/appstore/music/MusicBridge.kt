@@ -89,6 +89,7 @@ class MusicState {
     /** Absolute path of an imported font file; empty = system family. */
     var amllFontFile by mutableStateOf("")
     var amllMaskProfanity by mutableStateOf(true)
+    var amllStaticBg by mutableStateOf(false)
     var heartMode by mutableStateOf(false)
     var kugouKrcEnabled by mutableStateOf(false)
     var lyricSynthWords by mutableStateOf(true)
@@ -272,6 +273,7 @@ interface MusicBridge {
     }
     fun setAmllFontFile(value: String) { state.amllFontFile = value }
     fun setAmllMaskProfanity(value: Boolean) { state.amllMaskProfanity = value }
+    fun setAmllStaticBg(value: Boolean) { state.amllStaticBg = value }
     fun setHeartMode(value: Boolean) { state.heartMode = value }
     fun setKugouKrcEnabled(value: Boolean) { state.kugouKrcEnabled = value }
     fun setLyricSynthWords(value: Boolean) { state.lyricSynthWords = value }

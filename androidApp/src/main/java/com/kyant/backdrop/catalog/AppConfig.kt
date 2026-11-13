@@ -270,6 +270,11 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean("heart_mode", false)
         set(value) { prefs.edit().putBoolean("heart_mode", value).apply() }
 
+    /** 沉浸式歌词用静态（封面模糊）背景，省掉 Pixi 流体背景的开销。 */
+    var amllStaticBg: Boolean
+        get() = prefs.getBoolean("amll_static_bg", false)
+        set(value) { prefs.edit().putBoolean("amll_static_bg", value).apply() }
+
     var prefetchNext: Boolean
         get() = prefs.getBoolean("prefetch_next", true)
         set(value) { prefs.edit().putBoolean("prefetch_next", value).apply() }

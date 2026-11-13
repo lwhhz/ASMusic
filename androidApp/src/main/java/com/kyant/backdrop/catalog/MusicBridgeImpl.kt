@@ -91,6 +91,8 @@ class MusicBridgeImpl(
 
     /** Up-next list, filled by [playFrom] so the capsule's prev/next buttons work. */
     private var queue: List<Song> = emptyList()
+    /** 心动模式预取的推荐曲，避免每切一首就发一次网络请求。 */
+    private val heartPool = ArrayDeque<Song>()
     private var queueIndex = 0
     private var playToken = 0
     /** Seek requested before the new stream finished resolving. */
@@ -159,6 +161,7 @@ class MusicBridgeImpl(
         st.amllTtmlSource = config.amllTtmlSource
         st.amllFontFile = config.amllFontFile
         st.amllResumeDelay = config.amllResumeDelay
+        st.amllStaticBg = config.amllStaticBg
         st.heartMode = config.heartMode
         st.kugouKrcEnabled = config.kugouKrcEnabled
         st.lyricSynthWords = config.lyricSynthWords
@@ -843,28 +846,55 @@ class MusicBridgeImpl(
         }
     }
 
+    /** 池子少于 2 首时，按刚播放的歌曲再补一批推荐（异步，不阻塞播放）。 */
+    private fun refillHeartPool(direct: NeteaseDirect, songId: Long) {
+        if (heartPool.size >= 2) return
+        scope.launch {
+            val list = runCatching { direct.heartRecommend(songId) }.getOrNull().orEmpty()
+            list.filter { candidate ->
+                queue.none { it.id == candidate.id } && heartPool.none { it.id == candidate.id }
+            }.forEach { heartPool.addLast(it) }
+        }
+    }
+
     override fun next() {
         if (queue.size <= 1) return
-        // 心动模式：以一半概率插入一首算法推荐（红心歌单 + 当前歌曲）。
+        // 心动模式：池里有就直接用，池空时按当前歌曲补一次（不打断播放）。
         val direct = api as? NeteaseDirect
         val currentId = st.currentSong?.id
-        if (st.heartMode && direct != null && st.loggedIn && currentId != null &&
-            kotlin.random.Random.nextFloat() < 0.5f
-        ) {
-            scope.launch {
-                val pick = runCatching { direct.heartRecommend(currentId) }.getOrNull()
-                    ?.firstOrNull { candidate -> queue.none { it.id == candidate.id } }
-                if (pick != null) {
-                    queue = queue + pick
-                    queueIndex = queue.lastIndex
-                    st.playQueue = queue
-                    st.queueIndex = queueIndex
-                    start(pick)
-                } else {
-                    advanceQueue()
-                }
+        if (st.heartMode && direct != null && st.loggedIn && currentId != null) {
+            while (heartPool.isNotEmpty()) {
+                val candidate = heartPool.removeFirst()
+                if (queue.any { it.id == candidate.id }) continue
+                queue = queue + candidate
+                queueIndex = queue.lastIndex
+                st.playQueue = queue
+                st.queueIndex = queueIndex
+                start(candidate)
+                refillHeartPool(direct, candidate.id)
+                return
             }
-            return
+            // 池空：先按概率尝试现取一首，失败则照常播下一首。
+            if (kotlin.random.Random.nextFloat() < 0.75f) {
+                scope.launch {
+                    val list = runCatching { direct.heartRecommend(currentId) }.getOrNull().orEmpty()
+                    val fresh = list.filter { candidate ->
+                        queue.none { it.id == candidate.id } && heartPool.none { it.id == candidate.id }
+                    }
+                    fresh.drop(1).forEach { heartPool.addLast(it) }
+                    val pick = fresh.firstOrNull()
+                    if (pick != null) {
+                        queue = queue + pick
+                        queueIndex = queue.lastIndex
+                        st.playQueue = queue
+                        st.queueIndex = queueIndex
+                        start(pick)
+                    } else {
+                        advanceQueue()
+                    }
+                }
+                return
+            }
         }
         advanceQueue()
     }
@@ -1361,6 +1391,11 @@ class MusicBridgeImpl(
     override fun setKeepAmllWarm(value: Boolean) {
         config.keepAmllWarm = value
         st.keepAmllWarm = value
+    }
+
+    override fun setAmllStaticBg(value: Boolean) {
+        config.amllStaticBg = value
+        st.amllStaticBg = value
     }
 
     override fun setHeartMode(value: Boolean) {

@@ -182,6 +182,12 @@ fun FineTunePage(
                         ) { bridge.setTranslationFont(it) }
                     }
                     FineTuneGroup.Fluid -> {
+                        SettingSwitchRow(
+                            "静态背景",
+                            "用当前封面居中裁切+模糊替代流体背景，明显更省电",
+                            state.amllStaticBg
+                        ) { bridge.setAmllStaticBg(it) }
+                        SettingDivider()
                         SettingSlider(
                             "模糊强度",
                             state.fluidBlurDp,

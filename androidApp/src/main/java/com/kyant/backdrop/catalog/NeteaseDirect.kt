@@ -443,43 +443,48 @@ class NeteaseDirect(private val config: AppConfig) : MusicApi {
      * 心动模式推荐：先定位「我喜欢的音乐」歌单，再让网易云按当前歌曲给出相似推荐。
      * 接口是客户端私有协议，失败时返回空列表，调用方回退到普通下一首。
      */
-    private fun heartLog(line: String) {
-        runCatching {
-            val dir = java.io.File("/sdcard/Android/data/com.asmusic.app/files")
-            dir.mkdirs()
-            java.io.File(dir, "heart.txt").appendText(line + "\n")
-        }
-    }
 
     suspend fun heartRecommend(songId: Long): List<Song> = withContext(Dispatchers.IO) {
         runCatching {
             val pid = likedPlaylist()
-            heartLog("song=$songId pid=$pid")
             if (pid == null || pid <= 0L) return@runCatching emptyList()
+            // Parameters follow the official client: songId / type / playlistId / startMusicId / count
             val body = weapi(
                 "/api/playmode/intelligence/list",
-                JSONObject().put("id", songId).put("pid", pid).put("sid", songId)
+                JSONObject()
+                    .put("songId", songId)
+                    .put("type", "fromPlayOne")
+                    .put("playlistId", pid)
+                    .put("startMusicId", songId)
+                    .put("count", 3)
             ).body ?: return@runCatching emptyList()
-            heartLog("resp=" + body.toString().take(300))
             val data = body.optJSONArray("data") ?: return@runCatching emptyList()
             val ids = (0 until data.length()).mapNotNull { i ->
                 val item = data.optJSONObject(i) ?: return@mapNotNull null
                 val info = item.optJSONObject("songInfo") ?: item
                 info.optLong("id").takeIf { it > 0L }
             }
-            heartLog("ids=" + ids.take(5).joinToString(","))
             ids.take(5).mapNotNull { id -> songDetail(id) }
         }.getOrDefault(emptyList())
     }
 
     private suspend fun likedPlaylist(): Long? {
         likedPlaylistId?.let { return it }
-        val account = runCatching { weapi("/api/user/account", JSONObject()).body }.getOrNull() ?: return null
-        val uid = account.optJSONObject("account")?.optLong("id") ?: return null
+        // /api/user/account was retired (404); the current client uses nuser/account/get.
+        var uid = 0L
+        for (path in listOf("/api/nuser/account/get", "/api/w/nuser/account/get", "/api/user/account")) {
+            val body = runCatching { weapi(path, JSONObject()).body }.getOrNull() ?: continue
+            val candidate = body.optJSONObject("account")?.optLong("id") ?: 0L
+            if (candidate > 0L) { uid = candidate; break }
+        }
         if (uid <= 0L) return null
-        val lists = runCatching {
-            weapi("/api/user/playlist", JSONObject().put("uid", uid).put("offset", 0).put("limit", 200)).body
-        }.getOrNull() ?: return null
+        if (uid <= 0L) return null
+        val listsResp = runCatching {
+            weapi("/api/user/playlist", JSONObject().put("uid", uid).put("offset", 0).put("limit", 200))
+        }
+        val lists = listsResp.getOrNull()?.body ?: run {
+            return null
+        }
         val arr = lists.optJSONArray("playlist") ?: return null
         var found: Long? = null
         for (i in 0 until arr.length()) {

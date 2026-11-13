@@ -95,23 +95,12 @@ fun ChevronRight(
     color: Color = Color.White.copy(alpha = .55f),
     size: Dp = 12.dp
 ) {
-    Canvas(modifier.size(size)) {
-        val sw = this.size.width * .16f
-        drawLine(
-            color,
-            Offset(this.size.width * .30f, this.size.height * .16f),
-            Offset(this.size.width * .70f, this.size.height * .5f),
-            sw,
-            StrokeCap.Round
-        )
-        drawLine(
-            color,
-            Offset(this.size.width * .70f, this.size.height * .5f),
-            Offset(this.size.width * .30f, this.size.height * .84f),
-            sw,
-            StrokeCap.Round
-        )
-    }
+    androidx.compose.foundation.Image(
+        imageVector = com.kyant.backdrop.catalog.appstore.music.Iconoir.arrowRight,
+        contentDescription = null,
+        modifier = modifier.size(size),
+        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(color)
+    )
 }
 
 @Composable
@@ -421,11 +410,12 @@ fun SearchField(query: String, onQuery: (String) -> Unit, modifier: Modifier = M
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Canvas(Modifier.size(18.dp)) {
-            val sw = 2.dp.toPx()
-            drawCircle(AS.Text2, 6.dp.toPx(), Offset(7.dp.toPx(), 7.dp.toPx()), style = Stroke(sw))
-            drawLine(AS.Text2, Offset(11.5f.dp.toPx(), 11.5f.dp.toPx()), Offset(16.dp.toPx(), 16.dp.toPx()), sw)
-        }
+        androidx.compose.foundation.Image(
+            imageVector = com.kyant.backdrop.catalog.appstore.music.Iconoir.tabSearch,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(AS.Text2)
+        )
         Spacer(Modifier.width(10.dp))
         BasicTextField(
             value = query,
@@ -460,22 +450,20 @@ fun CircleButton(kind: CircleKind, onClick: () -> Unit, modifier: Modifier = Mod
             .tap(onClick),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.size(20.dp)) {
-            val c = Color.White
-            val sw = 2.dp.toPx()
-            when (kind) {
-                CircleKind.Back -> {
-                    drawLine(c, Offset(12.dp.toPx(), 3.dp.toPx()), Offset(5.dp.toPx(), 10.dp.toPx()), sw, androidx.compose.ui.graphics.StrokeCap.Round)
-                    drawLine(c, Offset(5.dp.toPx(), 10.dp.toPx()), Offset(12.dp.toPx(), 17.dp.toPx()), sw, androidx.compose.ui.graphics.StrokeCap.Round)
-                }
-                CircleKind.Share -> {
-                    drawLine(c, Offset(10.dp.toPx(), 3.dp.toPx()), Offset(10.dp.toPx(), 13.dp.toPx()), sw, androidx.compose.ui.graphics.StrokeCap.Round)
-                    drawLine(c, Offset(10.dp.toPx(), 3.dp.toPx()), Offset(5.5f.dp.toPx(), 7.5f.dp.toPx()), sw, androidx.compose.ui.graphics.StrokeCap.Round)
-                    drawLine(c, Offset(10.dp.toPx(), 3.dp.toPx()), Offset(14.5f.dp.toPx(), 7.5f.dp.toPx()), sw, androidx.compose.ui.graphics.StrokeCap.Round)
-                    drawRoundRect(c, topLeft = Offset(4.5f.dp.toPx(), 9.dp.toPx()), size = androidx.compose.ui.geometry.Size(11.dp.toPx(), 9.dp.toPx()), style = Stroke(sw))
-                }
-            }
+        val vector = when (kind) {
+            CircleKind.Back -> com.kyant.backdrop.catalog.appstore.music.Iconoir.arrowLeft
+            CircleKind.Share -> com.kyant.backdrop.catalog.appstore.music.Iconoir.share
         }
+        if (vector != null) {
+            androidx.compose.foundation.Image(
+                imageVector = vector,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White)
+            )
+            return@Box
+        }
+
     }
 }
 

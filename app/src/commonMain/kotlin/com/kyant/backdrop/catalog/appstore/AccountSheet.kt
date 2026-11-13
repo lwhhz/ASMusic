@@ -132,12 +132,12 @@ fun SettingsSheet(
                         .tap(onDismiss),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(Modifier.size(16.dp)) {
-                        val c = Color.White
-                        val sw = 2.dp.toPx()
-                        drawLine(c, Offset(4.dp.toPx(), 4.dp.toPx()), Offset(12.dp.toPx(), 12.dp.toPx()), sw, StrokeCap.Round)
-                        drawLine(c, Offset(12.dp.toPx(), 4.dp.toPx()), Offset(4.dp.toPx(), 12.dp.toPx()), sw, StrokeCap.Round)
-                    }
+                    androidx.compose.foundation.Image(
+                        imageVector = com.kyant.backdrop.catalog.appstore.music.Iconoir.close,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White)
+                    )
                 }
             }
 
@@ -226,7 +226,7 @@ fun SettingsSheet(
                 SheetDivider()
                 SheetValueRow("缓存管理", formatBytes(state.cacheInfo.totalBytes), onCache)
                 SheetDivider()
-                SheetValueRow("版本", "1.3.52", onClick = null)
+                SheetValueRow("版本", "1.3.54", onClick = null)
             }
 
             Spacer(Modifier.height(24.dp))
@@ -435,10 +435,10 @@ private fun SheetValueRow(label: String, value: String, onClick: (() -> Unit)?) 
 
 @Composable
 private fun Chevron() {
-    Canvas(Modifier.size(12.dp)) {
-        val c = AS.Text3
-        val sw = 2.dp.toPx()
-        drawLine(c, Offset(3.dp.toPx(), 1.dp.toPx()), Offset(9.dp.toPx(), 6.dp.toPx()), sw, StrokeCap.Round)
-        drawLine(c, Offset(9.dp.toPx(), 6.dp.toPx()), Offset(3.dp.toPx(), 11.dp.toPx()), sw, StrokeCap.Round)
-    }
+    androidx.compose.foundation.Image(
+        imageVector = com.kyant.backdrop.catalog.appstore.music.Iconoir.arrowRight,
+        contentDescription = null,
+        modifier = Modifier.size(13.dp),
+        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(AS.Text3)
+    )
 }

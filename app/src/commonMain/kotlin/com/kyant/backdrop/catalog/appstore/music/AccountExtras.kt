@@ -900,7 +900,7 @@ fun CustomizePage(
                 Spacer(Modifier.height(10.dp))
                 Spacer(Modifier.height(8.dp))
                 SettingValueLink(
-                    "详情页控制栏圆角",
+                    "播放胶囊",
                     if (state.capsuleCorner >= .995f) "胶囊"
                     else "${(state.capsuleCorner * 52f).toInt()} dp"
                 ) { onOpenFineTune(FineTuneGroup.Capsule) }
@@ -990,7 +990,7 @@ fun CustomizePage(
                     Spacer(Modifier.height(12.dp))
                     SettingDivider()
                     SettingValueLink(
-                        "Haze效果参数",
+                        "Haze 效果参数",
                         "${state.hazeHeightDp.toInt()} / ${state.hazeOpaqueDp.toInt()} / ${state.hazeBlurDp.toInt()} dp"
                     ) { onOpenFineTune(FineTuneGroup.Haze) }
                 }
@@ -1056,7 +1056,7 @@ fun CustomizePage(
                 ) { bridge.setLyricFlow(it) }
                 SettingDivider()
                 SettingValueLink(
-                    "歌词显示参数",
+                    "卡片歌词",
                     "光晕 ${(state.lyricGlow * 100).toInt()}% · 字号 ${state.lyricFont.toInt()} sp"
                 ) { onOpenFineTune(FineTuneGroup.Lyrics) }
             }
@@ -1077,12 +1077,12 @@ fun CustomizePage(
                     .padding(horizontal = 12.dp, vertical = 4.dp)
             ) {
                 SettingValueLink(
-                    "背景参数",
+                    "沉浸式歌词背景",
                     "模糊 ${state.fluidBlurDp.toInt()} · 形变 ${(state.fluidWarp * 100).toInt()}%"
                 ) { onOpenFineTune(FineTuneGroup.Fluid) }
                 SettingDivider()
                 SettingValueLink(
-                    "文字与交互",
+                    "沉浸式歌词文字",
                     "字号 ${state.amllFontSize.toInt()} · ${if (state.amllMaskProfanity) "已遮挡" else "不遮挡"}"
                 ) { onOpenFineTune(FineTuneGroup.Immersive) }
             }

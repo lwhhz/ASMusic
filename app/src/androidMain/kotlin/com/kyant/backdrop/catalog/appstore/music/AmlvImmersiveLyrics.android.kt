@@ -211,6 +211,19 @@ actual fun AmlvImmersiveLyrics(
         val view = webView.value ?: return@LaunchedEffect
         val url = cover ?: return@LaunchedEffect
         view.evaluateJavascript("amllSetCover(${jsString(url)})", null)
+        view.evaluateJavascript(
+            "amllSetStaticBg(${if (music.amllStaticBg) "true" else "false"})",
+            null
+        )
+    }
+
+    LaunchedEffect(pageReady, music.amllStaticBg) {
+        if (!pageReady) return@LaunchedEffect
+        val view = webView.value ?: return@LaunchedEffect
+        view.evaluateJavascript(
+            "amllSetStaticBg(${if (music.amllStaticBg) "true" else "false"})",
+            null
+        )
     }
 
     LaunchedEffect(pageReady, positionMs) {

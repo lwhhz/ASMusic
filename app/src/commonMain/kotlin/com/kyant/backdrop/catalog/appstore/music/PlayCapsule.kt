@@ -369,11 +369,12 @@ private fun ExpandedControls(
                         .tap(onHeart),
                     contentAlignment = Alignment.Center
                 ) {
-                    Txt(
-                        "♥",
-                        AS.body().copy(
-                            fontSize = 19.sp,
-                            color = if (heartMode) AS.Blue else AS.Text3
+                    androidx.compose.foundation.Image(
+                        imageVector = Iconoir.heart,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
+                            if (heartMode) AS.Blue else AS.Text3
                         )
                     )
                 }
@@ -479,30 +480,12 @@ private fun SkipButton(forward: Boolean, onClick: () -> Unit, size: Dp = 34.dp) 
             .tap(onClick),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.size(size * .45f)) {
-            val w = this.size.width
-            val h = this.size.height
-            val tint = Color.White.copy(alpha = .92f)
-            val path = Path()
-            if (forward) {
-                path.moveTo(w * .08f, h * .12f)
-                path.lineTo(w * .58f, h * .5f)
-                path.lineTo(w * .08f, h * .88f)
-            } else {
-                path.moveTo(w * .92f, h * .12f)
-                path.lineTo(w * .42f, h * .5f)
-                path.lineTo(w * .92f, h * .88f)
-            }
-            path.close()
-            drawPath(path, tint)
-            val barX = if (forward) w * .66f else w * .28f
-            drawRoundRect(
-                color = tint,
-                topLeft = Offset(barX, h * .16f),
-                size = Size(w * .1f, h * .68f),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .05f, w * .05f)
-            )
-        }
+        androidx.compose.foundation.Image(
+            imageVector = if (forward) Iconoir.skipNext else Iconoir.skipPrev,
+            contentDescription = null,
+            modifier = Modifier.size(size * .58f),
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White.copy(alpha = .92f))
+        )
     }
 }
 
@@ -528,74 +511,27 @@ private fun CircleIconButton(
 
 @Composable
 private fun QueueGlyph(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val c = Color.White.copy(alpha = .9f)
-        val rowH = size.height
-        val sw = 1.6.dp.toPx()
-        for (i in 0..2) {
-            drawLine(
-                c,
-                Offset(0f, rowH * (.18f + i * .30f)),
-                Offset(size.width * .62f, rowH * (.18f + i * .30f)),
-                sw,
-                StrokeCap.Round
-            )
-        }
-        val p = Path().apply {
-            moveTo(size.width * .70f, rowH * .32f)
-            lineTo(size.width * .98f, rowH * .5f)
-            lineTo(size.width * .70f, rowH * .68f)
-            close()
-        }
-        drawPath(p, c)
-    }
+    androidx.compose.foundation.Image(
+        imageVector = Iconoir.queue,
+        contentDescription = null,
+        modifier = modifier,
+        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White.copy(alpha = .9f))
+    )
 }
 
 @Composable
 private fun PlayModeGlyph(mode: PlayMode, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val c = Color.White.copy(alpha = .92f)
-        val w = size.width
-        val h = size.height
-        val sw = 1.6.dp.toPx()
-        fun arrowHead(x: Float, y: Float, dx: Float, dy: Float) {
-            val p = Path().apply {
-                moveTo(x, y)
-                lineTo(x - dx * .30f - dy * .22f, y - dy * .30f + dx * .22f)
-                lineTo(x - dx * .30f + dy * .22f, y - dy * .30f - dx * .22f)
-                close()
-            }
-            drawPath(p, c)
-        }
-        when (mode) {
-            PlayMode.Sequential -> {
-                drawLine(c, Offset(w * .10f, h * .5f), Offset(w * .70f, h * .5f), sw, StrokeCap.Round)
-                arrowHead(w * .78f, h * .5f, 1f, 0f)
-                drawLine(c, Offset(w * .90f, h * .26f), Offset(w * .90f, h * .74f), sw * 1.3f, StrokeCap.Round)
-            }
-            PlayMode.LoopAll, PlayMode.RepeatOne -> {
-                drawArc(
-                    c,
-                    startAngle = -60f,
-                    sweepAngle = 300f,
-                    useCenter = false,
-                    topLeft = Offset(w * .12f, h * .12f),
-                    size = Size(w * .76f, h * .76f),
-                    style = Stroke(sw, cap = StrokeCap.Round)
-                )
-                arrowHead(w * .84f, h * .24f, .7f, .7f)
-                if (mode == PlayMode.RepeatOne) {
-                    drawLine(c, Offset(w * .5f, h * .34f), Offset(w * .5f, h * .66f), sw, StrokeCap.Round)
-                    drawLine(c, Offset(w * .40f, h * .42f), Offset(w * .5f, h * .34f), sw, StrokeCap.Round)
-                }
-            }
-            PlayMode.Shuffle -> {
-                drawLine(c, Offset(w * .12f, h * .30f), Offset(w * .86f, h * .70f), sw, StrokeCap.Round)
-                drawLine(c, Offset(w * .12f, h * .70f), Offset(w * .86f, h * .30f), sw, StrokeCap.Round)
-                arrowHead(w * .90f, h * .72f, .6f, .8f)
-                arrowHead(w * .90f, h * .28f, .6f, -.8f)
-            }
-        }
+    val icon = when (mode) {
+        PlayMode.Sequential -> Iconoir.sequential
+        PlayMode.LoopAll -> Iconoir.repeat
+        PlayMode.RepeatOne -> Iconoir.repeatOnce
+        PlayMode.Shuffle -> Iconoir.shuffle
     }
+    androidx.compose.foundation.Image(
+        imageVector = icon,
+        contentDescription = null,
+        modifier = modifier,
+        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White.copy(alpha = .92f))
+    )
 }
 

@@ -168,7 +168,19 @@ fun MusicTabIcon(
     modifier: Modifier = Modifier,
     size: Dp = 24.dp
 ) {
-    Canvas(modifier.then(Modifier.size(size))) { drawMusicTabIcon(index, color) }
+    val icon = when (index) {
+        0 -> Iconoir.tabToday
+        1 -> Iconoir.tabNew
+        2 -> Iconoir.tabMine
+        3 -> Iconoir.tabStats
+        else -> Iconoir.tabSearch
+    }
+    androidx.compose.foundation.Image(
+        imageVector = icon,
+        contentDescription = null,
+        modifier = modifier.then(Modifier.size(size * .86f)),
+        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(color)
+    )
 }
 
 private fun DrawScope.drawMusicTabIcon(index: Int, color: Color) {

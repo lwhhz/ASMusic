@@ -30,6 +30,8 @@ AGPL-3.0 第 13 条要求向通过网络与程序交互的用户提供源码。�
 
 | [酷狗 KRC 歌词接口](https://www.kugou.com/) | 非官方接口 | **实验性、默认关闭** | 逐字歌词兜底（按歌名/歌手/时长检索） | 运行时按需请求，仅本机缓存，不随包分发 |
 
+| [Iconoir](https://github.com/iconoir-icons/iconoir) | MIT | 部分界面图标 | 从源 SVG 离线转换为 `ImageVector`（`Iconoir.kt`），仅保留用到的图标 |
+
 ## 合规说明
 
 - AMLL 相关代码（`bundle.js`）以 AGPL-3.0 授权，任何再分发本 APK 的行为都必须同时提供

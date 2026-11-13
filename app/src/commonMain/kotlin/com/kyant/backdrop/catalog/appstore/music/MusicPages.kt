@@ -617,11 +617,12 @@ private fun MusicSearchField(query: String, onQuery: (String) -> Unit, modifier:
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Canvas(Modifier.size(18.dp)) {
-            val sw = 2.dp.toPx()
-            drawCircle(AS.Text2, 6.dp.toPx(), Offset(7.dp.toPx(), 7.dp.toPx()), style = Stroke(sw))
-            drawLine(AS.Text2, Offset(11.5f.dp.toPx(), 11.5f.dp.toPx()), Offset(16.dp.toPx(), 16.dp.toPx()), sw)
-        }
+        androidx.compose.foundation.Image(
+            imageVector = Iconoir.tabSearch,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(AS.Text2)
+        )
         Spacer(Modifier.width(10.dp))
         BasicTextField(
             value = query,
