@@ -370,5 +370,9 @@ class NeteaseApi(private val config: AppConfig) : MusicApi {
         return if (total >= 0) SongSocial(likeCount = -1, commentCount = total) else null
     }
 
+    override suspend fun likeSong(id: Long, like: Boolean): Boolean? = null
+
+    override suspend fun artistAlbums(id: Long): List<Playlist>? = null
+
     private fun parseSong(j: JSONObject?): Song? = parseNeteaseSong(j)
 }

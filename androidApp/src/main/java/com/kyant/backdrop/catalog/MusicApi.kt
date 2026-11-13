@@ -45,6 +45,8 @@ interface MusicApi {
     suspend fun comments(id: Long): List<CommentItem>?
     suspend fun allComments(id: Long): List<CommentItem>?
     suspend fun songSocial(id: Long): SongSocial?
+    suspend fun likeSong(id: Long, like: Boolean): Boolean?
+    suspend fun artistAlbums(id: Long): List<Playlist>?
     suspend fun songUrl(id: Long): String?
     suspend fun songUrlAt(id: Long, level: String): com.kyant.backdrop.catalog.appstore.music.SongStream?
     suspend fun songQualities(id: Long): List<SongQuality>?

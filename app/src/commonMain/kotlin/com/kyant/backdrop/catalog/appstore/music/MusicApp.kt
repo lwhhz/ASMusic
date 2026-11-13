@@ -430,7 +430,8 @@ fun MusicApp() {
                                 scrollState = artistScroll,
                                 onBack = ::popPage,
                                 onOpenSong = ::openSongFromList,
-                                onOpenIntro = { title, text -> artistIntro = title to text }
+                                onOpenIntro = { title, text -> artistIntro = title to text },
+                                onOpenAlbum = ::openAlbum
                             )
                         }
                     }
@@ -856,8 +857,18 @@ private fun CapsuleDock(
                 onToggle = { bridge.toggle() },
                 onPrevious = { bridge.previous() },
                 onNext = { bridge.next() },
-                heartMode = state.heartMode,
-                onHeart = { bridge.setHeartMode(!state.heartMode) },
+                liked = song.id in state.likedIds,
+                onLike = {
+                    val id = song.id
+                    scope.launch {
+                        val target = id !in state.likedIds
+                        val ok = bridge.likeSong(id, target)
+                        bridge.showToast(
+                            if (ok) (if (target) "已添加到我喜欢" else "已取消喜欢")
+                            else "同步网易云失败"
+                        )
+                    }
+                },
                 onSeek = { bridge.seek(it) },
                 onOpen = onOpen,
                 onQuality = { state.qualitySheetOpen = true },

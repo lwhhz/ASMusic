@@ -1,5 +1,7 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -93,8 +95,8 @@ fun PlayCapsule(
     onSeek: (Long) -> Unit,
     onOpen: () -> Unit,
     onQuality: () -> Unit = {},
-    heartMode: Boolean = false,
-    onHeart: () -> Unit = {},
+    liked: Boolean = false,
+    onLike: () -> Unit = {},
     corner: () -> Float = { 1f },
     modifier: Modifier = Modifier
 ) {
@@ -179,8 +181,8 @@ fun PlayCapsule(
                         onPrevious = onPrevious,
                         onNext = onNext,
                         onOpen = onOpen,
-                        heartMode = heartMode,
-                        onHeart = onHeart
+                        liked = liked,
+                        onLike = onLike
                     )
                 }
             }
@@ -201,8 +203,8 @@ fun PlayCapsule(
                         onNext = onNext,
                         onSeek = onSeek,
                         onQuality = onQuality,
-                        heartMode = heartMode,
-                        onHeart = onHeart
+                        liked = liked,
+                        onLike = onLike
                     )
                 }
             }
@@ -221,8 +223,8 @@ private fun CompactControls(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onOpen: () -> Unit,
-    heartMode: Boolean,
-    onHeart: () -> Unit
+    liked: Boolean,
+    onLike: () -> Unit
 ) {
     // Content fades / defocuses while travelling; the order flips at the midpoint.
     val contentAlpha = 1f - fade * 0.98f
@@ -319,8 +321,8 @@ private fun ExpandedControls(
     onNext: () -> Unit,
     onSeek: (Long) -> Unit,
     onQuality: () -> Unit,
-    heartMode: Boolean,
-    onHeart: () -> Unit
+    liked: Boolean,
+    onLike: () -> Unit
 ) {
     val state = MusicServices.state
     val bridge = MusicServices.bridge
@@ -359,21 +361,36 @@ private fun ExpandedControls(
                 Modifier.align(Alignment.Center),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 心动模式：仅详情页展开态显示，位于「上一首」左侧
+                // 红心：加入「我喜欢的音乐」并同步网易云。无底色，仅按压缩放反馈。
+                val likePress = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                val likePressed by likePress.collectIsPressedAsState()
+                val likeScale by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (likePressed) 0.82f else 1f,
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = .55f, stiffness = 900f
+                    ),
+                    label = "like-scale"
+                )
                 Box(
                     Modifier
                         .size(40.dp)
-                        .clip(CircleShape)
-                        .background(if (heartMode) AS.Blue.copy(alpha = 0.18f) else Color.Transparent)
-                        .tap(onHeart),
+                        .graphicsLayer {
+                            scaleX = likeScale
+                            scaleY = likeScale
+                        }
+                        .clickable(
+                            interactionSource = likePress,
+                            indication = null,
+                            onClick = onLike
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
                         imageVector = Iconoir.heart,
                         contentDescription = null,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(21.dp),
                         colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
-                            if (heartMode) AS.Blue else AS.Text3
+                            if (liked) Color(0xFFFF4D6A) else Color.White.copy(alpha = .86f)
                         )
                     )
                 }

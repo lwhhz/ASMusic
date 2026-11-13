@@ -883,43 +883,6 @@ class MusicBridgeImpl(
 
     override fun next() {
         if (queue.size <= 1) return
-        // 心动模式：池里有就直接用，池空时按当前歌曲补一次（不打断播放）。
-        val direct = api as? NeteaseDirect
-        val currentId = st.currentSong?.id
-        if (st.heartMode && direct != null && st.loggedIn && currentId != null) {
-            while (heartPool.isNotEmpty()) {
-                val candidate = heartPool.removeFirst()
-                if (queue.any { it.id == candidate.id }) continue
-                queue = queue + candidate
-                queueIndex = queue.lastIndex
-                st.playQueue = queue
-                st.queueIndex = queueIndex
-                start(candidate)
-                refillHeartPool(direct, candidate.id)
-                return
-            }
-            // 池空：先按概率尝试现取一首，失败则照常播下一首。
-            if (kotlin.random.Random.nextFloat() < 0.75f) {
-                scope.launch {
-                    val list = runCatching { direct.heartRecommend(currentId) }.getOrNull().orEmpty()
-                    val fresh = list.filter { candidate ->
-                        queue.none { it.id == candidate.id } && heartPool.none { it.id == candidate.id }
-                    }
-                    fresh.drop(1).forEach { heartPool.addLast(it) }
-                    val pick = fresh.firstOrNull()
-                    if (pick != null) {
-                        queue = queue + pick
-                        queueIndex = queue.lastIndex
-                        st.playQueue = queue
-                        st.queueIndex = queueIndex
-                        start(pick)
-                    } else {
-                        advanceQueue()
-                    }
-                }
-                return
-            }
-        }
         advanceQueue()
     }
 
@@ -1435,6 +1398,33 @@ class MusicBridgeImpl(
         config.amllStaticBg = value
         st.amllStaticBg = value
     }
+
+    override suspend fun likeSong(id: Long, like: Boolean): Boolean {
+        val ok = runCatching { api.likeSong(id, like) }.getOrNull() == true
+        if (ok) {
+            st.likedIds = if (like) st.likedIds + id else st.likedIds - id
+        }
+        return ok
+    }
+
+    override suspend fun heartPoolSongs(): List<Song> = withContext(Dispatchers.IO) {
+        if (heartPool.isEmpty()) {
+            val direct = api as? NeteaseDirect
+            // No playback yet (home page): seed from today's recommendation so the
+            // card has something to show.
+            val seedId = st.currentSong?.id
+                ?: runCatching { api.dailySongs()?.firstOrNull()?.id }.getOrNull()
+            val currentId = seedId
+            if (direct != null && currentId != null) {
+                runCatching { direct.heartRecommend(currentId) }.getOrNull().orEmpty()
+                    .forEach { heartPool.addLast(it) }
+            }
+        }
+        heartPool.toList()
+    }
+
+    override suspend fun artistAlbums(id: Long): List<Playlist> =
+        runCatching { api.artistAlbums(id) }.getOrNull().orEmpty()
 
     override fun setHeartMode(value: Boolean) {
         config.heartMode = value

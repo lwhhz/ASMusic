@@ -72,6 +72,11 @@ fun TodayPage(
 ) {
     val state = MusicServices.state
     val bridge = MusicServices.bridge
+    // 心动池：与首页卡片共用，不在播放时插队，只在卡片里播放整池。
+    var heartPool by remember { mutableStateOf<List<Song>>(emptyList()) }
+    LaunchedEffect(state.loggedIn) {
+        heartPool = runCatching { bridge.heartPoolSongs() }.getOrDefault(emptyList())
+    }
     var cards by remember { mutableStateOf(Fixtures.todayCards(state.todayKinds)) }
 
     LaunchedEffect(state.todayKinds, state.loggedIn) {
@@ -102,6 +107,17 @@ fun TodayPage(
             Modifier.padding(horizontal = AS.PagePad),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            if (heartPool.isNotEmpty()) {
+                HeartModeCard(
+                    pool = heartPool,
+                    onPlay = {
+                        heartPool.firstOrNull()?.let { first ->
+                            bridge.playFrom(heartPool, first)
+                            bridge.showToast("心动模式 · ${first.name}")
+                        }
+                    }
+                )
+            }
             cards.forEachIndexed { index, playlist ->
                 PlaylistCard(
                     playlist,
@@ -115,6 +131,49 @@ fun TodayPage(
                     }
                 )
             }
+        }
+    }
+}
+
+/**
+ * 首页「心动模式」卡片：封面取心动池第一首，标题固定为「心动模式」。
+ * 点击播放整个心动池，不改变当前播放队列。
+ */
+@Composable
+private fun HeartModeCard(
+    pool: List<Song>,
+    onPlay: () -> Unit
+) {
+    val first = pool.firstOrNull() ?: return
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(220.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(AS.Card)
+            .tap(onPlay)
+    ) {
+        CoverImage(first.coverUrl, first.id, Modifier.fillMaxSize())
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0.00f to Color.Transparent,
+                        0.55f to Color.Transparent,
+                        0.82f to Color(0x59000000),
+                        1.00f to Color(0xE6000000)
+                    )
+                )
+        )
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, end = 84.dp, bottom = 18.dp)) {
+            Txt("HEART MODE", AS.eyebrow().copy(color = Color.White.copy(.82f)))
+            Spacer(Modifier.height(6.dp))
+            MarqueeText("心动模式", AS.cardTitle().copy(fontSize = 24.sp, color = Color.White))
+            Txt("${first.artist} · 共 ${pool.size} 首", AS.subtitle().copy(color = Color.White.copy(.8f)), maxLines = 1)
+        }
+        Box(Modifier.align(Alignment.BottomEnd).padding(18.dp)) {
+            PlayPauseButton(false, onPlay, size = 44.dp, filled = true)
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,19 +44,30 @@ fun ArtistPage(
     scrollState: ScrollState,
     onBack: () -> Unit,
     onOpenSong: (List<Song>, Song) -> Unit,
-    onOpenIntro: (String, String) -> Unit = { _, _ -> }
+    onOpenIntro: (String, String) -> Unit = { _, _ -> },
+    onOpenAlbum: (Long) -> Unit = {}
 ) {
     val state = MusicServices.state
     val bridge = MusicServices.bridge
     var songs by remember(artistId) { mutableStateOf<List<Song>>(emptyList()) }
     var loading by remember(artistId) { mutableStateOf(true) }
     var info by remember(artistId) { mutableStateOf<ArtistInfo?>(null) }
+    var tab by remember(artistId) { mutableIntStateOf(0) }
+    var albums by remember(artistId) { mutableStateOf<List<Playlist>>(emptyList()) }
+    var albumsLoading by remember(artistId) { mutableStateOf(false) }
 
     LaunchedEffect(artistId) {
         loading = true
         songs = runCatching { bridge.artistSongs(artistId) }.getOrDefault(emptyList())
         loading = false
         info = runCatching { bridge.artistInfo(artistId) }.getOrNull()
+    }
+    LaunchedEffect(artistId, tab) {
+        if (tab == 1 && albums.isEmpty()) {
+            albumsLoading = true
+            albums = runCatching { bridge.artistAlbums(artistId) }.getOrDefault(emptyList())
+            albumsLoading = false
+        }
     }
     val name = artistName.ifBlank { songs.firstOrNull()?.artist ?: "艺术家" }
 
@@ -139,7 +151,47 @@ fun ArtistPage(
             }
             Spacer(Modifier.height(16.dp))
         }
-        if (songs.isEmpty()) {
+        // 单曲 / 专辑
+        Row(
+            Modifier.padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("单曲", "专辑").forEachIndexed { i, label ->
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (tab == i) AS.Blue else AS.Card)
+                        .tap { tab = i }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Txt(
+                        label,
+                        AS.body().copy(
+                            fontSize = 14.sp,
+                            color = if (tab == i) Color.White else AS.Text2
+                        )
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        if (tab == 1) {
+            if (albumsLoading) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
+                    Txt("正在加载…", AS.caption())
+                }
+            } else if (albums.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
+                    Txt("暂时没有这位歌手的专辑", AS.caption())
+                }
+            } else {
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    albums.forEach { album ->
+                        PlaylistTile(album, onClick = { onOpenAlbum(album.id) })
+                    }
+                }
+            }
+        } else if (songs.isEmpty()) {
             Box(
                 Modifier.fillMaxWidth().padding(vertical = 40.dp),
                 contentAlignment = Alignment.Center

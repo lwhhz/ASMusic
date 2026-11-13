@@ -618,6 +618,49 @@ class NeteaseDirect(private val config: AppConfig) : MusicApi {
      * Song-level social stats: 红心数 from the eapi red/count endpoint, comment
      * total from the comment resource. Either may fail independently.
      */
+    /** 红心：同步到网易云「我喜欢的音乐」。 */
+    override suspend fun likeSong(id: Long, like: Boolean): Boolean? = withContext(Dispatchers.IO) {
+        runCatching {
+            // Correct endpoint is /weapi/radio/like (the old "/api/like" resolved to
+            // /weapi/like, which returns 404 and silently did nothing).
+            val body = weapi(
+                "/api/radio/like",
+                JSONObject()
+                    .put("alg", "itembased")
+                    .put("trackId", id)
+                    .put("like", like)
+                    .put("time", "3")
+            ).body ?: return@runCatching null
+            body.optInt("code") == 200
+        }.getOrNull()
+    }
+
+    /** 歌手专辑列表。 */
+    override suspend fun artistAlbums(id: Long): List<Playlist>? = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = weapi(
+                "/api/artist/albums/$id",
+                JSONObject().put("limit", 30).put("offset", 0).put("total", true)
+            ).body ?: return@runCatching null
+            val arr = body.optJSONArray("hotAlbums") ?: return@runCatching null
+            (0 until arr.length()).mapNotNull { i ->
+                val a = arr.optJSONObject(i) ?: return@mapNotNull null
+                val aid = a.optLong("id")
+                if (aid <= 0L) return@mapNotNull null
+                Playlist(
+                    id = aid,
+                    name = a.optString("name").ifBlank { "专辑" },
+                    subtitle = a.optJSONObject("artist")?.optString("name").orEmpty()
+                        .ifBlank { a.optString("subType").ifBlank { "专辑" } },
+                    coverUrl = a.optString("picUrl").takeIf { it.isNotBlank() },
+                    songCount = a.optInt("size", 0),
+                    kind = PlaylistKind.NewRelease,
+                    songs = emptyList()
+                )
+            }.ifEmpty { null }
+        }.getOrNull()
+    }
+
     override suspend fun songSocial(id: Long): SongSocial? {
         val likeCount = runCatching {
             val body = eapi("/api/song/red/count", JSONObject().put("songId", id)).body

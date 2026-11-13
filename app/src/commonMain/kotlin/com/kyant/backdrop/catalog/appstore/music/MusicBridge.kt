@@ -92,6 +92,8 @@ class MusicState {
     var posterConfig by mutableStateOf(PosterConfig())
     var amllStaticBg by mutableStateOf(false)
     var heartMode by mutableStateOf(false)
+    /** 本次会话里红心过的歌曲，用于心形按钮的即时反馈。 */
+    var likedIds by mutableStateOf(setOf<Long>())
     var kugouKrcEnabled by mutableStateOf(false)
     var lyricSynthWords by mutableStateOf(true)
     var lyricKeepSung by mutableStateOf(true)
@@ -279,6 +281,15 @@ interface MusicBridge {
     fun setPosterConfig(value: PosterConfig) { state.posterConfig = value }
     fun setAmllStaticBg(value: Boolean) { state.amllStaticBg = value }
     fun setHeartMode(value: Boolean) { state.heartMode = value }
+
+    /** 红心：写入网易云「我喜欢的音乐」。 */
+    suspend fun likeSong(id: Long, like: Boolean): Boolean = false
+
+    /** 心动池里的歌曲（首页「心动模式」卡片用它取封面与播放）。 */
+    suspend fun heartPoolSongs(): List<Song> = emptyList()
+
+    /** 歌手页的专辑列表。 */
+    suspend fun artistAlbums(id: Long): List<Playlist> = emptyList()
     fun setKugouKrcEnabled(value: Boolean) { state.kugouKrcEnabled = value }
     fun setLyricSynthWords(value: Boolean) { state.lyricSynthWords = value }
     fun setLyricKeepSung(value: Boolean) { state.lyricKeepSung = value }
