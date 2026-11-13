@@ -55,8 +55,16 @@ class MusicCache(context: Context) {
     private val playsFile = File(root, "plays.json")
     private val ioLock = Mutex()
 
+    // Cap by decoded bytes rather than entry count: one 512 px cover costs ~1 MB,
+    // so a fixed entry count could hold 60+ MB on a large screen.
+    private var imageCacheBytes = 0L
     private val memoryImages = object : LinkedHashMap<String, ImageBitmap>(32, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?) = size > 64
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?): Boolean {
+            val limit = 36L * 1024 * 1024
+            if (eldest == null) return size > 128
+            imageCacheBytes -= eldest.value.width.toLong() * eldest.value.height * 4
+            return imageCacheBytes > limit || size > 128
+        }
     }
 
     // ------------------------------------------------------------------
@@ -122,7 +130,10 @@ class MusicCache(context: Context) {
                 }.getOrNull()
             }
         }
-        if (bmp != null) memoryImages[key] = bmp
+        if (bmp != null) {
+            imageCacheBytes += bmp.width.toLong() * bmp.height * 4
+            memoryImages[key] = bmp
+        }
         return bmp
     }
 

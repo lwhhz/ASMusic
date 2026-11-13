@@ -79,7 +79,10 @@ fun LyricCards(
     onLongPress: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val safeLines = lines.ifEmpty { listOf(LyricLine(0, "暂无歌词")) }
+    // Stable reference: a fresh list here would invalidate the LazyRow on every tick.
+    val safeLines = remember(lines) {
+        if (lines.isEmpty()) listOf(LyricLine(0, "暂无歌词")) else lines
+    }
     val size = safeLines.size
     // Enough cycles to keep the carousel effectively infinite without creating a
     // 10k+ item index space; LazyRow only composes visible pages anyway.
@@ -87,9 +90,13 @@ fun LyricCards(
     val startPage = size * (loops / 2)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startPage)
 
-    var currentIndex = 0
-    for (i in safeLines.indices) {
-        if (safeLines[i].timeMs <= positionMs) currentIndex = i
+    // Only recompute the active line when the position or the line list changes.
+    val currentIndex = remember(positionMs, safeLines) {
+        var idx = 0
+        for (i in safeLines.indices) {
+            if (safeLines[i].timeMs <= positionMs) idx = i
+        }
+        idx
     }
     var manualHold by remember { mutableStateOf(false) }
     var userMoved by remember { mutableStateOf(false) }
@@ -116,7 +123,12 @@ fun LyricCards(
         }
     }
 
-    LaunchedEffect(currentIndex, userMoved, manualHold, followSuppressed) {
+    val scrollInProgress by remember {
+        kotlinx.coroutines.flow.flowOf(Unit).let {
+            androidx.compose.runtime.derivedStateOf { listState.isScrollInProgress }
+        }
+    }
+    LaunchedEffect(currentIndex, userMoved, manualHold, followSuppressed, scrollInProgress) {
         if (userMoved || manualHold || followSuppressed) return@LaunchedEffect
         if (!listState.isScrollInProgress) {
             val cur = listState.firstVisibleItemIndex
@@ -131,6 +143,7 @@ fun LyricCards(
             if (curMod != currentIndex) {
                 var delta = currentIndex - curMod
                 if (delta < 0) delta += size
+                if (delta > size / 2) delta -= size
                 runCatching {
                     // Fast-out-slow-in instead of the default linear-ish scroll.
                     val info = listState.layoutInfo.visibleItemsInfo
@@ -198,7 +211,9 @@ fun LyricCards(
                 glow = glow,
                 fontSp = fontSp,
                 translationSp = translationSp,
-                flow = flow,
+                // Only the active card animates its gradient: every extra running
+                // frame loop is expensive on low-end devices.
+                flow = flow && active,
                 onClick = {
                     manualHold = false
                     userMoved = false

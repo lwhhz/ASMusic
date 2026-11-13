@@ -85,6 +85,27 @@ fun PlayPauseButton(
 }
 
 /**
+ * Measuring text is one of the more expensive parts of a list row; the same titles are
+ * measured again every time a row scrolls back into view, so keep a tiny LRU by text.
+ */
+private val textMeasureCache =
+    object : LinkedHashMap<String, androidx.compose.ui.text.TextLayoutResult>(64, .75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, androidx.compose.ui.text.TextLayoutResult>?
+        ) = size > 96
+    }
+
+private fun measureCached(
+    measurer: androidx.compose.ui.text.TextMeasurer,
+    text: String,
+    style: androidx.compose.ui.text.TextStyle
+): androidx.compose.ui.text.TextLayoutResult {
+    val key = text + "|" + style.fontSize.value + "|" + (style.fontWeight?.weight ?: -1)
+    textMeasureCache[key]?.let { return it }
+    return measurer.measure(AnnotatedString(text), style).also { textMeasureCache[key] = it }
+}
+
+/**
  * 单行文字：放得下就静态显示，放不下才从左到右循环滚动。
  * 用于歌曲名等可能超长的文本，替代直接截断。
  */
@@ -96,7 +117,7 @@ fun MarqueeText(
     speedDpPerSecond: Float = 36f
 ) {
     val measurer = rememberTextMeasurer()
-    val layout = remember(text, style) { measurer.measure(AnnotatedString(text), style) }
+    val layout = remember(text, style) { measureCached(measurer, text, style) }
     BoxWithConstraints(modifier.clipToBounds()) {
         val density = LocalDensity.current
         val containerPx = constraints.maxWidth.toFloat()
@@ -185,6 +206,8 @@ private fun ArtworkBlurBand(
         CoverImage(
             url,
             seed,
+            // Keep Unbounded here: the blurred band relies on the blur spilling
+            // past its own bounds, otherwise the card loses the soft gradient edge.
             Modifier.fillMaxSize().blur(32.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
         )
     }

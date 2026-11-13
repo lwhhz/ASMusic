@@ -203,7 +203,7 @@ fun NewReleasesPage(
                 Spacer(Modifier.height(12.dp))
             }
         }
-        items(allSongs.take(10), key = { it.id }) { song ->
+        items(allSongs.take(10), key = { it.id }, contentType = { "song-row" }) { song ->
             Box(Modifier.padding(horizontal = AS.PagePad)) {
                 SongRow(
                     song,
@@ -225,7 +225,7 @@ fun NewReleasesPage(
                     Spacer(Modifier.height(14.dp))
                 }
             }
-            items(charts.chunked(3), key = { row -> row.firstOrNull()?.id ?: 0L }) { row ->
+            items(charts.chunked(3), key = { row -> row.firstOrNull()?.id ?: 0L }, contentType = { "chart-row" }) { row ->
                 Row(
                     Modifier
                         .fillMaxWidth()

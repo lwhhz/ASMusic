@@ -306,28 +306,18 @@ fun SongDetailPage(
             // font sliders and must ignore the global UI/font scale.
             CompositionLocalProvider(LocalDensity provides DensityDefaults.original) {
             key(current.id) {
-            LyricCards(
+            DetailLyricCards(
+                current = current,
                 lines = lines,
-                positionMs = state.positionMs,
-                wordByWord = state.wordByWord,
-                playing = state.playing && isCurrent,
-                synthWords = state.lyricSynthWords,
-                keepSung = state.lyricKeepSung,
-                showTranslation = state.showTranslation,
-                glow = state.lyricGlow,
-                fontSp = state.lyricFont,
-                translationSp = state.translationFont,
-                palette = cardPalette,
-                songSeed = current.id,
-                flow = state.lyricFlow,
+                cardPalette = cardPalette,
+                isCurrent = isCurrent,
                 onSeek = { ms ->
                     // Jump the song to the lyric the user snapped to, and make sure it
                     // is actually the playing track.
                     if (!isCurrent) bridge.play(current) else if (!state.playing) bridge.toggle()
                     bridge.seek(ms)
                 },
-                onLongPress = { onOpenImmersive(current, lines) },
-                modifier = Modifier.padding(start = 16.dp)
+                onLongPress = { onOpenImmersive(current, lines) }
             )
             }
             }
@@ -493,6 +483,42 @@ fun SongDetailPage(
             )
         }
     }
+}
+
+
+/**
+ * The lyric row is the only part of the detail page that changes with playback
+ * progress, so it reads `state.positionMs` **inside** this composable: otherwise every
+ * progress tick would recompose the whole page (hero art, header, comments…).
+ */
+@Composable
+private fun DetailLyricCards(
+    current: Song,
+    lines: List<LyricLine>,
+    cardPalette: List<Color>,
+    isCurrent: Boolean,
+    onSeek: (Long) -> Unit,
+    onLongPress: () -> Unit
+) {
+    val state = MusicServices.state
+    LyricCards(
+        lines = lines,
+        positionMs = state.positionMs,
+        wordByWord = state.wordByWord,
+        playing = state.playing && isCurrent,
+        synthWords = state.lyricSynthWords,
+        keepSung = state.lyricKeepSung,
+        showTranslation = state.showTranslation,
+        glow = state.lyricGlow,
+        fontSp = state.lyricFont,
+        translationSp = state.translationFont,
+        palette = cardPalette,
+        songSeed = current.id,
+        flow = state.lyricFlow,
+        onSeek = onSeek,
+        onLongPress = onLongPress,
+        modifier = Modifier.padding(start = 16.dp)
+    )
 }
 
 @Composable

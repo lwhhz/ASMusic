@@ -343,7 +343,20 @@ fun MusicApp() {
                 animationSpec = tween(320),
                 label = "tab-exit"
             )
-            Box(
+            // Once a secondary page fully covers the tab content there is no reason to
+            // keep composing it: its lists, marquees and glass layers would keep
+            // running behind an opaque page. Wait for the fade-out to finish first so
+            // the transition still looks identical.
+            var tabComposed by remember { mutableStateOf(true) }
+            LaunchedEffect(stack.isNotEmpty()) {
+                if (stack.isEmpty()) {
+                    tabComposed = true
+                } else {
+                    delay(360)
+                    tabComposed = false
+                }
+            }
+            if (tabComposed) Box(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
@@ -1049,7 +1062,7 @@ private fun PlaylistDetailPage(
                 }
             }
         } else {
-            itemsIndexed(songs, key = { _, song -> song.id }) { _, song ->
+            itemsIndexed(songs, key = { _, song -> song.id }, contentType = { _, _ -> "song-row" }) { _, song ->
                 Box(Modifier.padding(horizontal = 16.dp)) {
                     SongRow(
                         song,
