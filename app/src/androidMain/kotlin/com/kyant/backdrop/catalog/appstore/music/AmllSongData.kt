@@ -295,7 +295,7 @@ internal object AmllSongData {
      * Netease lyric lines as JSON for the page. Word timings are kept when the yrc
      * parser produced them, so AMLL still gets karaoke timing without a TTML file.
      */
-    fun linesJson(lines: List<LyricLine>): String {
+    fun linesJson(lines: List<LyricLine>, allowSynth: Boolean = true): String {
         val sb = StringBuilder("[")
         lines.forEachIndexed { index, line ->
             if (index > 0) sb.append(',')
@@ -303,9 +303,13 @@ internal object AmllSongData {
             sb.append("\"t\":").append(line.timeMs)
             sb.append(",\"text\":").append(quote(line.text))
             line.translation?.let { sb.append(",\"tr\":").append(quote(it)) }
-            if (line.words.isNotEmpty()) {
+            val timed = line.timedWords(
+                lines.getOrNull(index + 1)?.timeMs ?: (line.timeMs + 3_000L),
+                allowSynth
+            )
+            if (timed.isNotEmpty()) {
                 sb.append(",\"w\":[")
-                line.words.forEachIndexed { wi, word ->
+                timed.forEachIndexed { wi, word ->
                     if (wi > 0) sb.append(',')
                     sb.append('{')
                     sb.append("\"t\":").append(word.timeMs)

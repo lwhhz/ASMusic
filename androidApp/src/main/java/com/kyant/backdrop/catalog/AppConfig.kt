@@ -247,6 +247,24 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean("keep_amll_warm", true)
         set(value) { prefs.edit().putBoolean("keep_amll_warm", value).apply() }
 
+    /** Estimate per-character timings when the lyric source has no word data. */
+    var lyricSynthWords: Boolean
+        get() = prefs.getBoolean("lyric_synth_words", true)
+        set(value) { prefs.edit().putBoolean("lyric_synth_words", value).apply() }
+
+    /** Keep the already sung part highlighted instead of fading it back. */
+    var lyricKeepSung: Boolean
+        get() = prefs.getBoolean("lyric_keep_sung", true)
+        set(value) { prefs.edit().putBoolean("lyric_keep_sung", value).apply() }
+
+    /**
+     * Experimental third-party word-level lyric source (Kugou KRC). Off by default:
+     * it talks to Kugou's public lyric endpoints and the data belongs to them.
+     */
+    var kugouKrcEnabled: Boolean
+        get() = prefs.getBoolean("kugou_krc_enabled", false)
+        set(value) { prefs.edit().putBoolean("kugou_krc_enabled", value).apply() }
+
     var prefetchNext: Boolean
         get() = prefs.getBoolean("prefetch_next", true)
         set(value) { prefs.edit().putBoolean("prefetch_next", value).apply() }

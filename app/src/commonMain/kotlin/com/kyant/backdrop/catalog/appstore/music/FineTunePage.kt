@@ -30,13 +30,13 @@ enum class FineTuneGroup(val title: String, val note: String) {
     Capsule("播放胶囊", "只影响歌曲详情页展开后的全宽控制栏，胶囊形态始终保持。"),
     Haze("Haze 效果参数", "覆盖高度是模糊区域总高；过渡是顶部完全不透明的高度，之后才逐渐变透明；模糊强度决定最顶端的峰值模糊。"),
     Interface("界面大小", "同时影响间距与控件尺寸。歌词卡片与沉浸式歌词不受影响。"),
-    Lyrics("歌词显示", "光晕、弹簧、歌词与翻译字号，只作用于歌词卡片。"),
+    Lyrics("卡片歌词", "逐字方式、字号与光晕，只作用于歌曲详情页的歌词卡。"),
+    Source("歌词源", "逐字歌词的数据来源。TTML 来自 AMLL 公共库；第三方源默认关闭，开启后歌词数据来自对应平台。"),
     Fluid("沉浸式歌词背景", "长按歌词卡进入沉浸式歌词后生效；背景由当前歌曲封面实时生成。"),
     Immersive(
         "沉浸式歌词文字",
         "只作用于 AMLL 沉浸式页面。滑走歌词后会在设定时间后自动回到正在播放的那一行；点击任意一行可跳到该句。"
     ),
-    Cache("音频缓存上限", "512 MB，之后每档 5 GB，最大 20 GB")
 }
 
 /**
@@ -122,19 +122,24 @@ fun FineTunePage(
                         ) { bridge.setUiScale(it) }
                     }
                     FineTuneGroup.Lyrics -> {
+                        SettingSwitchRow(
+                            "估算逐字",
+                            "歌词源没有词级时间轴时，按行时长均分给每个字，仍能呈现扫过效果",
+                            state.lyricSynthWords
+                        ) { bridge.setLyricSynthWords(it) }
+                        SettingDivider()
+                        SettingSwitchRow(
+                            "已唱部分保持高亮",
+                            "关闭后高亮只在当前字附近移动，唱过的部分会重新变暗",
+                            state.lyricKeepSung
+                        ) { bridge.setLyricKeepSung(it) }
+                        SettingDivider()
                         SettingSlider(
                             "模糊 / 光晕强度",
                             state.lyricGlow,
                             0f..1f,
                             "${(state.lyricGlow * 100).toInt()}%"
                         ) { bridge.setLyricGlow(it) }
-                        SettingDivider()
-                        SettingSlider(
-                            "动画弹性",
-                            state.lyricSpring,
-                            0f..1f,
-                            "${(state.lyricSpring * 100).toInt()}%"
-                        ) { bridge.setLyricSpring(it) }
                         SettingDivider()
                         SettingSlider(
                             "歌词字号",
@@ -187,18 +192,6 @@ fun FineTunePage(
                             state.keepAmllWarm
                         ) { bridge.setKeepAmllWarm(it) }
                         SettingDivider()
-                        SettingSwitchRow(
-                            "TTML 逐字歌词",
-                            "关闭后只用网易云歌词；开启时优先用 TTML（命中即逐字）",
-                            state.amllTtmlEnabled
-                        ) { bridge.setAmllTtmlEnabled(it) }
-                        SettingDivider()
-                        SettingTextFieldRow(
-                            "TTML 源",
-                            state.amllTtmlSource,
-                            "%p = 目录（ncm-lyrics / raw-lyrics），%s = 文件名。留空恢复默认。",
-                        ) { bridge.setAmllTtmlSource(it) }
-                        SettingDivider()
                         SettingSlider(
                             "歌词字号",
                             state.amllFontSize,
@@ -237,13 +230,30 @@ fun FineTunePage(
                             else "${state.amllResumeDelay.toInt()} s"
                         ) { bridge.setAmllResumeDelay(it) }
                     }
-                    FineTuneGroup.Cache -> {
-                        SettingStepSlider(
-                            "音频缓存上限",
-                            state.audioCacheLimitMb.toFloat(),
-                            CacheLimitSteps,
-                            formatBytes(state.audioCacheLimitMb.toLong() * 1024L * 1024L)
-                        ) { bridge.setAudioCacheLimitMb(it.roundToInt()) }
+                    FineTuneGroup.Source -> {
+                        SettingSwitchRow(
+                            "TTML 逐字歌词",
+                            "关闭后只用网易云歌词；开启时优先使用 TTML（命中即逐字）",
+                            state.amllTtmlEnabled
+                        ) { bridge.setAmllTtmlEnabled(it) }
+                        SettingDivider()
+                        SettingTextFieldRow(
+                            "TTML 源",
+                            state.amllTtmlSource,
+                            "%p = 目录（ncm-lyrics / raw-lyrics），%s = 文件名。留空恢复默认。",
+                        ) { bridge.setAmllTtmlSource(it) }
+                        SettingDivider()
+                        SettingSwitchRow(
+                            "酷狗 KRC 逐字（实验）",
+                            "网易云没有词级时间轴时，按歌名/歌手/时长向酷狗请求逐字歌词；默认关闭",
+                            state.kugouKrcEnabled
+                        ) { bridge.setKugouKrcEnabled(it) }
+                        Spacer(Modifier.height(8.dp))
+                        Txt(
+                            "第三方源说明：开启后会向酷狗音乐的公开歌词接口发起请求，结果仅缓存在本机。" +
+                                "歌词数据版权归酷狗及权利人所有，本项目不分发该数据；如不同意请保持关闭。",
+                            AS.caption()
+                        )
                     }
                 }
             }

@@ -1,5 +1,6 @@
 package com.kyant.backdrop.catalog
 
+import com.kyant.backdrop.catalog.appstore.music.KugouKrc
 import com.kyant.backdrop.catalog.appstore.music.ArtistInfo
 import android.Manifest
 import android.content.Context
@@ -158,6 +159,9 @@ class MusicBridgeImpl(
         st.amllTtmlSource = config.amllTtmlSource
         st.amllFontFile = config.amllFontFile
         st.amllResumeDelay = config.amllResumeDelay
+        st.kugouKrcEnabled = config.kugouKrcEnabled
+        st.lyricSynthWords = config.lyricSynthWords
+        st.lyricKeepSung = config.lyricKeepSung
         st.keepAmllWarm = config.keepAmllWarm
         st.prefetchNext = config.prefetchNext
         st.waitForCache = config.waitForCache
@@ -385,7 +389,26 @@ class MusicBridgeImpl(
                 return value
             }
         }
-        val fresh = api.lyric(id)
+        var fresh = api.lyric(id)
+        // No word-level timings from Netease: try the opt-in Kugou KRC source.
+        if (st.kugouKrcEnabled && (fresh.isNullOrEmpty() || fresh.none { it.words.isNotEmpty() })) {
+            val song = st.currentSong?.takeIf { it.id == id }
+                ?: queue.firstOrNull { it.id == id }
+            if (song != null) {
+                val krc = withContext(Dispatchers.IO) {
+                    runCatching {
+                        KugouKrc.lyrics(
+                            appContext,
+                            song.name,
+                            song.artist,
+                            song.durationMs,
+                            fresh.orEmpty()
+                        )
+                    }.getOrDefault(emptyList())
+                }
+                if (krc.isNotEmpty()) fresh = krc
+            }
+        }
         if (!fresh.isNullOrEmpty()) cache.write(key, lyricToJson(fresh))
         cache.read(key)?.let { stale ->
             val value = lyricFromJson(stale)
@@ -1311,6 +1334,21 @@ class MusicBridgeImpl(
     override fun setKeepAmllWarm(value: Boolean) {
         config.keepAmllWarm = value
         st.keepAmllWarm = value
+    }
+
+    override fun setKugouKrcEnabled(value: Boolean) {
+        config.kugouKrcEnabled = value
+        st.kugouKrcEnabled = value
+    }
+
+    override fun setLyricSynthWords(value: Boolean) {
+        config.lyricSynthWords = value
+        st.lyricSynthWords = value
+    }
+
+    override fun setLyricKeepSung(value: Boolean) {
+        config.lyricKeepSung = value
+        st.lyricKeepSung = value
     }
 
     override fun setWaitForCache(value: Boolean) {

@@ -79,6 +79,7 @@ private fun OverlaySheetScaffold(
     visible: Boolean,
     title: String,
     onDismiss: () -> Unit,
+    scrollable: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val progress by animateFloatAsState(
@@ -119,7 +120,15 @@ private fun OverlaySheetScaffold(
                     contentAlignment = Alignment.Center
                 ) { Txt("✓", AS.body().copy(fontSize = 16.sp, color = AS.Blue)) }
             }
-            content()
+            if (scrollable) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) { content() }
+            } else {
+                content()
+            }
         }
     }
 }
@@ -629,7 +638,7 @@ fun CacheSheet(visible: Boolean, onDismiss: () -> Unit) {
         }
     }
 
-    OverlaySheetScaffold(visible, "缓存管理", onDismiss) {
+    OverlaySheetScaffold(visible, "缓存管理", onDismiss, scrollable = true) {
         Txt(formatBytes(state.cacheInfo.totalBytes), AS.largeTitle().copy(fontSize = 40.sp))
         Txt(
             if (state.cacheInfo.recentCount > 0) "已缓存内容 · 播放记录 ${state.cacheInfo.recentCount} 首"
@@ -743,6 +752,7 @@ fun CacheSheet(visible: Boolean, onDismiss: () -> Unit) {
             "缓存仅保存在本机，不会上传。清理后再次打开歌单、歌曲或歌词时会重新联网加载；音频缓存清理后歌曲会重新下载；播放记录清空后听歌统计会重新开始。",
             AS.caption()
         )
+        Spacer(Modifier.navigationBarsPadding())
     }
 }
 
@@ -892,7 +902,7 @@ fun CustomizePage(
         Spacer(Modifier.height(18.dp))
 
         Column(Modifier.padding(horizontal = 16.dp)) {
-            Txt("播放胶囊", AS.caption().copy(color = AS.Text3))
+            Txt("播放", AS.caption().copy(color = AS.Text3))
             Spacer(Modifier.height(8.dp))
             Column(
                 Modifier
@@ -954,7 +964,7 @@ fun CustomizePage(
             )
 
             Spacer(Modifier.height(22.dp))
-            Txt("歌曲详情页", AS.caption().copy(color = AS.Text3))
+            Txt("外观 · 详情页", AS.caption().copy(color = AS.Text3))
             Spacer(Modifier.height(8.dp))
             Column(
                 Modifier
@@ -1029,7 +1039,7 @@ fun CustomizePage(
             }
 
             Spacer(Modifier.height(22.dp))
-            Txt("界面", AS.caption().copy(color = AS.Text3))
+            Txt("外观 · 界面大小", AS.caption().copy(color = AS.Text3))
             Spacer(Modifier.height(8.dp))
             Column(
                 Modifier
@@ -1051,7 +1061,7 @@ fun CustomizePage(
             )
 
             Spacer(Modifier.height(22.dp))
-            Txt("歌词", AS.caption().copy(color = AS.Text3))
+            Txt("歌词显示", AS.caption().copy(color = AS.Text3))
             Spacer(Modifier.height(8.dp))
             Column(
                 Modifier
@@ -1090,7 +1100,7 @@ fun CustomizePage(
             )
 
             Spacer(Modifier.height(22.dp))
-            Txt("沉浸式歌词背景", AS.caption().copy(color = AS.Text3))
+            Txt("沉浸式歌词", AS.caption().copy(color = AS.Text3))
             Spacer(Modifier.height(8.dp))
             Column(
                 Modifier
@@ -1114,6 +1124,24 @@ fun CustomizePage(
                 "长按歌词卡进入沉浸式歌词后生效；背景由当前歌曲封面实时生成，不是视频。",
                 AS.caption()
             )
+            Spacer(Modifier.height(22.dp))
+            Txt("歌词源", AS.caption().copy(color = AS.Text3))
+            Spacer(Modifier.height(8.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(AS.Card)
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                SettingValueLink(
+                    "逐字歌词来源",
+                    if (state.amllTtmlEnabled) "TTML 优先 · 网易云兜底" else "仅网易云歌词"
+                ) { onOpenFineTune(FineTuneGroup.Source) }
+            }
+            Spacer(Modifier.height(10.dp))
+            Txt("TTML 命中时使用社区维护的逐字歌词，未命中回退到网易云。", AS.caption())
+
         }
     }
 }

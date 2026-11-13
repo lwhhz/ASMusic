@@ -115,6 +115,41 @@ data class ArtistInfo(
     val desc: String,
 )
 
+/**
+ * Word timings for rendering a progressive highlight. Real yrc timings are used when
+ * available; otherwise the line is split into characters (CJK) / words (latin) and the
+ * duration is distributed evenly, so the AMLL-style sweep still works for line-only
+ * lyrics (most of the JP catalogue has no yrc at all).
+ */
+fun LyricLine.timedWords(nextStartMs: Long, allowSynth: Boolean = true): List<LyricWord> {
+    if (words.isNotEmpty()) return words
+    if (!allowSynth) return emptyList()
+    val span = (nextStartMs - timeMs).coerceAtLeast(600L)
+    val usable = (span * 0.88f).toLong().coerceAtLeast(400L)
+    val segments = mutableListOf<String>()
+    var latin = StringBuilder()
+    for (ch in text) {
+        if (ch.code in 0x4E00..0x9FFF || ch.code in 0x3040..0x30FF || ch.code in 0xAC00..0xD7AF) {
+            if (latin.isNotEmpty()) { segments += latin.toString(); latin = StringBuilder() }
+            segments += ch.toString()
+        } else if (ch.isWhitespace()) {
+            if (latin.isEmpty()) segments += " " else { latin.append(ch) }
+        } else {
+            latin.append(ch)
+        }
+    }
+    if (latin.isNotEmpty()) segments += latin.toString()
+    if (segments.isEmpty()) return listOf(LyricWord(timeMs, usable, text))
+    val totalChars = segments.sumOf { it.length }.coerceAtLeast(1)
+    var cursor = timeMs
+    return segments.map { seg ->
+        val dur = (usable.toDouble() * seg.length / totalChars).toLong().coerceAtLeast(40L)
+        val word = LyricWord(cursor, dur, seg)
+        cursor += dur
+        word
+    }
+}
+
 @Immutable
 data class CommentItem(
     val id: Long,

@@ -26,10 +26,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,6 +65,9 @@ fun LyricCards(
     lines: List<LyricLine>,
     positionMs: Long,
     wordByWord: Boolean = false,
+    playing: Boolean = false,
+    synthWords: Boolean = true,
+    keepSung: Boolean = true,
     showTranslation: Boolean = true,
     glow: Float = 0.55f,
     fontSp: Float = 23f,
@@ -179,6 +188,12 @@ fun LyricCards(
                 index = index,
                 total = size,
                 active = active,
+                positionMs = positionMs,
+                playing = playing,
+                nextTimeMs = nextTime,
+                wordByWord = wordByWord,
+                synthWords = synthWords,
+                keepSung = keepSung,
                 showTranslation = showTranslation,
                 glow = glow,
                 fontSp = fontSp,
@@ -204,6 +219,12 @@ private fun LyricCard(
     index: Int,
     total: Int,
     active: Boolean,
+    positionMs: Long,
+    playing: Boolean,
+    nextTimeMs: Long,
+    wordByWord: Boolean,
+    synthWords: Boolean,
+    keepSung: Boolean,
     showTranslation: Boolean,
     glow: Float,
     fontSp: Float,
@@ -243,8 +264,58 @@ private fun LyricCard(
                 .padding(22.dp),
             verticalArrangement = Arrangement.Center
         ) {
+            // AMLL-style per-character fill: each word lights up across its own
+            // duration, so the highlight sweeps through the line instead of jumping.
+            // The player reports position a few times per second; interpolating on
+            // every frame keeps the sweep continuous instead of jumping per tick.
+            var smoothPos by remember { mutableLongStateOf(positionMs) }
+            LaunchedEffect(active, playing, positionMs) {
+                if (!active || !wordByWord) {
+                    smoothPos = positionMs
+                    return@LaunchedEffect
+                }
+                if (kotlin.math.abs(smoothPos - positionMs) > 350L) smoothPos = positionMs
+                if (!playing) return@LaunchedEffect
+                var last = withFrameNanos { it }
+                while (true) {
+                    withFrameNanos { now ->
+                        smoothPos += (now - last) / 1_000_000L
+                        last = now
+                    }
+                }
+            }
+            val karaoke = remember(line, smoothPos, wordByWord, active, synthWords, keepSung) {
+                if (!active || !wordByWord) {
+                    null
+                } else {
+                    buildAnnotatedString {
+                        val dim = Color.White.copy(alpha = .63f)
+                        val bright = Color.White
+                        line.timedWords(nextTimeMs, synthWords).forEach { word ->
+                            val duration = word.durationMs.coerceAtLeast(1L)
+                            val wordProgress =
+                                ((smoothPos - word.timeMs).toFloat() / duration).coerceIn(0f, 1f)
+                            val text = word.text
+                            val count = text.length.coerceAtLeast(1)
+                            text.forEachIndexed { i, ch ->
+                                val raw = wordProgress * count - i
+                                // keepSung: characters stay lit once sung;
+                                // otherwise the highlight is a short moving window.
+                                val charFill = if (keepSung) {
+                                    raw.coerceIn(0f, 1f)
+                                } else {
+                                    (raw.coerceIn(-2.2f, 1f) + 2.2f) / 3.2f
+                                }.coerceIn(0f, 1f)
+                                withStyle(SpanStyle(color = lerp(dim, bright, charFill))) {
+                                    append(ch)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             BasicText(
-                text = line.text,
+                text = karaoke ?: AnnotatedString(line.text),
                 style = textStyle,
                 maxLines = maxRows,
                 modifier = inactiveBlur

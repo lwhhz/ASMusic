@@ -55,7 +55,7 @@ class MusicState {
     var qualityOverride by mutableStateOf<String?>(null)
     // ---- lyrics preferences (Customize page) ----
     /** Karaoke (word-by-word) lyrics when Netease provides yrc timings. */
-    var wordByWord by mutableStateOf(false)
+    var wordByWord by mutableStateOf(true)
     /** Show the machine translation under each lyric line when available. */
     var showTranslation by mutableStateOf(true)
     /** Song-detail sticky header treatment. */
@@ -89,6 +89,9 @@ class MusicState {
     /** Absolute path of an imported font file; empty = system family. */
     var amllFontFile by mutableStateOf("")
     var amllMaskProfanity by mutableStateOf(true)
+    var kugouKrcEnabled by mutableStateOf(false)
+    var lyricSynthWords by mutableStateOf(true)
+    var lyricKeepSung by mutableStateOf(true)
     var keepAmllWarm by mutableStateOf(true)
     var prefetchNext by mutableStateOf(true)
     var waitForCache by mutableStateOf(true)
@@ -268,6 +271,9 @@ interface MusicBridge {
     }
     fun setAmllFontFile(value: String) { state.amllFontFile = value }
     fun setAmllMaskProfanity(value: Boolean) { state.amllMaskProfanity = value }
+    fun setKugouKrcEnabled(value: Boolean) { state.kugouKrcEnabled = value }
+    fun setLyricSynthWords(value: Boolean) { state.lyricSynthWords = value }
+    fun setLyricKeepSung(value: Boolean) { state.lyricKeepSung = value }
     fun setKeepAmllWarm(value: Boolean) { state.keepAmllWarm = value }
     fun setPrefetchNext(value: Boolean) { state.prefetchNext = value }
     fun setWaitForCache(value: Boolean) { state.waitForCache = value }

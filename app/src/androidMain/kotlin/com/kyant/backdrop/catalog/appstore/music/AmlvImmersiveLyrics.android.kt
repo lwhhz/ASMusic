@@ -185,7 +185,7 @@ actual fun AmlvImmersiveLyrics(
     LaunchedEffect(pageReady, ttml, lines, lrclib) {
         if (!pageReady) return@LaunchedEffect
         val view = webView.value ?: return@LaunchedEffect
-        val linesJson = lrclib ?: AmllSongData.linesJson(lines)
+        val linesJson = lrclib ?: AmllSongData.linesJson(lines, music.lyricSynthWords)
         view.evaluateJavascript(
             "amllSetLyric(${jsString(ttml ?: "")}, ${jsString(linesJson)})",
             null
