@@ -69,9 +69,8 @@ fun LiquidBottomTabs(
     val accentColor =
         if (isLightTheme) Color(0xFF0088FF)
         else Color(0xFF0091FF)
-    val containerColor =
-        if (isLightTheme) Color(0xFFFAFAFA).copy(0.4f)
-        else Color(0xFF121212).copy(0.4f)
+    // Always dark: the bar reads as smoked glass over any artwork.
+    val containerColor = Color(0xFF0E0E11).copy(0.62f)
 
     val tabsBackdrop = rememberLayerBackdrop()
 
@@ -278,12 +277,13 @@ fun LiquidBottomTabs(
                     },
                     onDrawSurface = {
                         val progress = dampedDragAnimation.pressProgress
+                        // The bar is always dark glass now, so the resting pill needs a
+                        // stronger light tint to stay visible against it.
                         drawRect(
-                            if (isLightTheme) Color.Black.copy(0.1f)
-                            else Color.White.copy(0.1f),
+                            Color.White.copy(0.20f),
                             alpha = 1f - progress
                         )
-                        drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                        drawRect(Color.White.copy(alpha = 0.10f * progress))
                     }
                 )
                 .height(56f.dp)

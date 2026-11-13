@@ -103,9 +103,8 @@ fun PlayCapsule(
     } else 0f
 
     // Same liquid-glass recipe as the bottom tab bar so both read as one material.
-    val isLight = !isSystemInDarkTheme()
-    val containerColor =
-        if (isLight) Color(0xFFFAFAFA).copy(alpha = .4f) else Color(0xFF121212).copy(alpha = .4f)
+    // Always dark: matches the bottom bar so both read as one smoked-glass material.
+    val containerColor = Color(0xFF0E0E11).copy(alpha = .62f)
 
     val height by animateDpAsState(
         targetValue = if (expanded) ExpandedHeight else CompactHeight,

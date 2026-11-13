@@ -14,8 +14,8 @@ android {
         applicationId = "com.asmusic.app"
         minSdk = 23
         targetSdk = 37
-        versionCode = 68
-        versionName = "1.3.55"
+        versionCode = 69
+        versionName = "1.3.56"
         androidResources.localeFilters += arrayOf("en")
     }
 
