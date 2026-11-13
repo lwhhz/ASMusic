@@ -1,5 +1,11 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -29,8 +35,8 @@ val CacheLimitSteps = listOf(512f, 5120f, 10240f, 15360f, 20480f)
 enum class FineTuneGroup(val title: String, val note: String) {
     Capsule("播放胶囊", "只影响歌曲详情页展开后的全宽控制栏，胶囊形态始终保持。"),
     Haze("Haze 效果参数", "覆盖高度是模糊区域总高；过渡是顶部完全不透明的高度，之后才逐渐变透明；模糊强度决定最顶端的峰值模糊。"),
-    Interface("界面大小", "同时影响间距与控件尺寸。歌词卡片与沉浸式歌词不受影响。"),
     Lyrics("卡片歌词", "逐字方式、字号与光晕，只作用于歌曲详情页的歌词卡。"),
+    Cache("缓存与预加载", "音频缓存上限、下一首预缓存，以及「缓存好再播放」。"),
     Source("歌词源", "逐字歌词的数据来源。TTML 来自 AMLL 公共库；第三方源默认关闭，开启后歌词数据来自对应平台。"),
     Fluid("沉浸式歌词背景", "长按歌词卡进入沉浸式歌词后生效；背景由当前歌曲封面实时生成。"),
     Immersive(
@@ -76,6 +82,34 @@ fun FineTunePage(
             ) {
                 when (group) {
                     FineTuneGroup.Capsule -> {
+                    // Live preview of the song-detail control bar shape.
+                    val previewCorner = state.capsuleCorner
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .clip(
+                                if (previewCorner >= .995f) CircleShape
+                                else RoundedCornerShape((previewCorner * 32f).dp)
+                            )
+                            .background(AS.CardElevated)
+                            .padding(horizontal = 18.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Decorative transport bar: progress line + prev / play / next dots.
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.size(10.dp).clip(CircleShape).background(AS.Text3))
+                            Spacer(Modifier.width(18.dp))
+                            Box(Modifier.size(16.dp).clip(CircleShape).background(AS.Blue))
+                            Spacer(Modifier.width(18.dp))
+                            Box(Modifier.size(10.dp).clip(CircleShape).background(AS.Text3))
+                        }
+                    }
+                        Spacer(Modifier.height(10.dp))
                         SettingSlider(
                             "详情页控制栏圆角",
                             state.capsuleCorner,
@@ -113,24 +147,16 @@ fun FineTunePage(
                             "${(state.hazeScrim * 100).toInt()}%"
                         ) { bridge.setHazeScrim(it) }
                     }
-                    FineTuneGroup.Interface -> {
-                        SettingStepSlider(
-                            "界面大小",
-                            state.uiScale,
-                            UiScaleSteps,
-                            "${(state.uiScale * 100).toInt()}%"
-                        ) { bridge.setUiScale(it) }
-                    }
                     FineTuneGroup.Lyrics -> {
                         SettingSwitchRow(
                             "估算逐字",
-                            "歌词源没有词级时间轴时，按行时长均分给每个字，仍能呈现扫过效果",
+                            "没有词级时间轴时，按行时长均分到每个字",
                             state.lyricSynthWords
                         ) { bridge.setLyricSynthWords(it) }
                         SettingDivider()
                         SettingSwitchRow(
                             "已唱部分保持高亮",
-                            "关闭后高亮只在当前字附近移动，唱过的部分会重新变暗",
+                            "关闭后高亮只跟随当前字，唱过的字会变暗",
                             state.lyricKeepSung
                         ) { bridge.setLyricKeepSung(it) }
                         SettingDivider()
@@ -230,6 +256,26 @@ fun FineTunePage(
                             else "${state.amllResumeDelay.toInt()} s"
                         ) { bridge.setAmllResumeDelay(it) }
                     }
+                    FineTuneGroup.Cache -> {
+                        SettingStepSlider(
+                            "音频缓存上限",
+                            state.audioCacheLimitMb.toFloat(),
+                            CacheLimitSteps,
+                            formatBytes(state.audioCacheLimitMb.toLong() * 1024L * 1024L)
+                        ) { bridge.setAudioCacheLimitMb(it.roundToInt()) }
+                        SettingDivider()
+                        SettingSwitchRow(
+                            "缓存下一首",
+                            "播放时后台把下一首下完",
+                            state.prefetchNext
+                        ) { bridge.setPrefetchNext(it) }
+                        SettingDivider()
+                        SettingSwitchRow(
+                            "缓存好再播放",
+                            "先下完再播；网速慢时首播会等几秒，但不跳进度",
+                            state.waitForCache
+                        ) { bridge.setWaitForCache(it) }
+                    }
                     FineTuneGroup.Source -> {
                         SettingSwitchRow(
                             "TTML 逐字歌词",
@@ -245,7 +291,7 @@ fun FineTunePage(
                         SettingDivider()
                         SettingSwitchRow(
                             "酷狗 KRC 逐字（实验）",
-                            "网易云没有词级时间轴时，按歌名/歌手/时长向酷狗请求逐字歌词；默认关闭",
+                            "网易云无词级时间轴时向酷狗请求逐字歌词；默认关闭",
                             state.kugouKrcEnabled
                         ) { bridge.setKugouKrcEnabled(it) }
                         Spacer(Modifier.height(8.dp))

@@ -170,12 +170,9 @@ fun SettingsSheet(
                 Chevron()
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(22.dp))
+            Txt("账号", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
             SheetGroup {
-                SheetLinkRow("JS 音乐源脚本导入", onScriptImport)
-                SheetDivider()
-                SheetLinkRow("自检与修复", { runCheck(false) })
-                SheetDivider()
                 SheetValueRow(
                     "音质",
                     "WiFi ${com.kyant.backdrop.catalog.appstore.music.AudioQuality.from(state.wifiQuality).label} · 移动 ${com.kyant.backdrop.catalog.appstore.music.AudioQuality.from(state.mobileQuality).label}",
@@ -197,22 +194,6 @@ fun SettingsSheet(
                     )
                 }
                 SheetDivider()
-                SheetLinkRow("自定义", onCustomize, color = AS.Blue)
-            }
-
-            Spacer(Modifier.height(20.dp))
-            Txt("存储", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
-            SheetGroup {
-                SheetValueRow("缓存管理", formatBytes(state.cacheInfo.totalBytes), onCache)
-            }
-            Spacer(Modifier.height(10.dp))
-            Txt(
-                "后台常驻权限用于保持 JS 音源解析服务；系统媒体控制与流体云由系统自动接入。",
-                AS.caption()
-            )
-
-            Spacer(Modifier.height(20.dp))
-            SheetGroup {
                 SheetLinkRow(if (state.loggedIn) "重新扫码登录" else "链接网易云账号", onNeteaseLogin)
                 if (state.loggedIn) {
                     SheetDivider()
@@ -224,10 +205,30 @@ fun SettingsSheet(
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(22.dp))
+            Txt("播放与外观", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
             SheetGroup {
-                SheetValueRow("版本", "1.3.50", onClick = null)
+                SheetLinkRow("JS 音乐源脚本导入", onScriptImport)
+                SheetDivider()
+                SheetLinkRow("播放、外观与歌词", onCustomize, color = AS.Blue)
             }
+            Spacer(Modifier.height(10.dp))
+            Txt(
+                "播放胶囊、顶栏风格、界面大小、歌词与歌词源都在这里。" +
+                    "后台常驻权限用于保持 JS 音源解析服务；系统媒体控制与流体云由系统自动接入。",
+                AS.caption()
+            )
+
+            Spacer(Modifier.height(22.dp))
+            Txt("维护", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            SheetGroup {
+                SheetLinkRow("自检与修复", { runCheck(false) })
+                SheetDivider()
+                SheetValueRow("缓存管理", formatBytes(state.cacheInfo.totalBytes), onCache)
+                SheetDivider()
+                SheetValueRow("版本", "1.3.52", onClick = null)
+            }
+
             Spacer(Modifier.height(24.dp))
         }
     }

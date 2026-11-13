@@ -663,29 +663,6 @@ fun CacheSheet(visible: Boolean, onDismiss: () -> Unit) {
         }
 
         Spacer(Modifier.height(16.dp))
-        SettingStepSlider(
-            label = "音频缓存上限",
-            value = state.audioCacheLimitMb.toFloat(),
-            steps = CacheLimitSteps,
-            display = formatBytes(state.audioCacheLimitMb.toLong() * 1024L * 1024L),
-            onChange = { bridge.setAudioCacheLimitMb(it.roundToInt()) }
-        )
-        Txt("512 MB · 5 / 10 / 15 / 20 GB", AS.caption())
-
-        Spacer(Modifier.height(16.dp))
-        SettingSwitchRow(
-            "缓存下一首",
-            "当前歌曲播放时，后台把队列里的下一首完整下载到音频缓存",
-            state.prefetchNext
-        ) { bridge.setPrefetchNext(it) }
-        SettingDivider()
-        SettingSwitchRow(
-            "缓存好再播放",
-            "开始播放前先把整首下载进缓存；网速慢时首次播放会等几秒，但进度不会跳变",
-            state.waitForCache
-        ) { bridge.setWaitForCache(it) }
-
-        Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SheetButton(
                 if (busy) "处理中…" else "清理数据缓存",
@@ -749,7 +726,7 @@ fun CacheSheet(visible: Boolean, onDismiss: () -> Unit) {
 
         Spacer(Modifier.height(14.dp))
         Txt(
-            "缓存仅保存在本机，不会上传。清理后再次打开歌单、歌曲或歌词时会重新联网加载；音频缓存清理后歌曲会重新下载；播放记录清空后听歌统计会重新开始。",
+            "缓存只存在本机。清理后歌单/歌词会重新联网加载，音频会重新下载。",
             AS.caption()
         )
         Spacer(Modifier.navigationBarsPadding())
@@ -921,33 +898,6 @@ fun CustomizePage(
                 Spacer(Modifier.height(14.dp))
                 SettingDivider()
                 Spacer(Modifier.height(10.dp))
-                // Live preview of the song-detail control bar shape.
-                val previewCorner = state.capsuleCorner
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .clip(
-                            if (previewCorner >= .995f) CircleShape
-                            else RoundedCornerShape((previewCorner * 32f).dp)
-                        )
-                        .background(AS.CardElevated)
-                        .padding(horizontal = 18.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Decorative transport bar: progress line + prev / play / next dots.
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(AS.Text3))
-                        Spacer(Modifier.width(18.dp))
-                        Box(Modifier.size(16.dp).clip(CircleShape).background(AS.Blue))
-                        Spacer(Modifier.width(18.dp))
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(AS.Text3))
-                    }
-                }
                 Spacer(Modifier.height(8.dp))
                 SettingValueLink(
                     "详情页控制栏圆角",
@@ -962,6 +912,21 @@ fun CustomizePage(
                     "切换与拖动均使用带轻微回弹的弹簧动画。",
                 AS.caption()
             )
+
+            Spacer(Modifier.height(10.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(AS.Card)
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                SettingValueLink(
+                    "缓存与预加载",
+                    "${formatBytes(state.audioCacheLimitMb * 1024L * 1024L)} · " +
+                        if (state.prefetchNext) "预缓存开" else "预缓存关"
+                ) { onOpenFineTune(FineTuneGroup.Cache) }
+            }
 
             Spacer(Modifier.height(22.dp))
             Txt("外观 · 详情页", AS.caption().copy(color = AS.Text3))
@@ -1048,10 +1013,12 @@ fun CustomizePage(
                     .background(AS.Card)
                     .padding(horizontal = 12.dp, vertical = 4.dp)
             ) {
-                SettingValueLink(
+                SettingStepSlider(
                     "界面大小",
+                    state.uiScale,
+                    UiScaleSteps,
                     "${(state.uiScale * 100).toInt()}%"
-                ) { onOpenFineTune(FineTuneGroup.Interface) }
+                ) { bridge.setUiScale(it) }
             }
             Spacer(Modifier.height(10.dp))
             Txt(
@@ -1140,7 +1107,7 @@ fun CustomizePage(
                 ) { onOpenFineTune(FineTuneGroup.Source) }
             }
             Spacer(Modifier.height(10.dp))
-            Txt("TTML 命中时使用社区维护的逐字歌词，未命中回退到网易云。", AS.caption())
+            Txt("命中时用社区逐字歌词，未命中回退网易云。", AS.caption())
 
         }
     }
