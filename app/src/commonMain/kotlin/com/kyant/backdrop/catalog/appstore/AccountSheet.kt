@@ -226,7 +226,7 @@ fun SettingsSheet(
                 SheetDivider()
                 SheetValueRow("缓存管理", formatBytes(state.cacheInfo.totalBytes), onCache)
                 SheetDivider()
-                SheetValueRow("版本", "1.3.58", onClick = null)
+                SheetValueRow("版本", "1.3.59", onClick = null)
             }
 
             Spacer(Modifier.height(24.dp))

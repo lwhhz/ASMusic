@@ -43,13 +43,15 @@ class MainActivity : ComponentActivity() {
         val proxy = NeteaseApi(config)
         val direct = NeteaseDirect(config)
         val cache = MusicCache(this)
-        val player = MusicPlayer(
+        // Reuse the existing player: creating a second MusicPlayer would open the same
+        // SimpleCache folder and crash with "Another SimpleCache instance uses the folder".
+        val player = PlaybackHolder.player ?: MusicPlayer(
             this,
             MusicServices.state,
             { message -> MusicServices.bridge.showToast(message) },
             onEnded = { bridge?.onTrackEnded() },
             cacheLimitBytes = config.audioCacheLimitMb.toLong() * 1024L * 1024L
-        )
+        ).also { PlaybackHolder.player = it }
 
         picker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri == null) return@registerForActivityResult

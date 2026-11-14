@@ -96,6 +96,13 @@ class MusicBridgeImpl(
     private var queue: List<Song> = emptyList()
     /** 心动模式预取的推荐曲，避免每切一首就发一次网络请求。 */
     private val heartPool = ArrayDeque<Song>()
+    /** 心动模式进入前的队列快照，用于退出时恢复。 */
+    private var heartSavedQueue: List<Song>? = null
+    private var heartSavedIndex = 0
+    /** 心动流的前瞻窗口（老歌 / 推荐交替）。 */
+    private val heartStream = ArrayDeque<Song>()
+    /** 最近播放过的歌曲，用于去重。 */
+    private val recentPlayed = ArrayDeque<Long>()
     private var queueIndex = 0
     private var playToken = 0
     /** Seek requested before the new stream finished resolving. */
@@ -784,6 +791,7 @@ class MusicBridgeImpl(
     }
 
     override fun playFrom(songs: List<Song>, song: Song) {
+        leaveHeartModeForNewQueue()
         val list = songs.ifEmpty { listOf(song) }
         val index = list.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
         // Picking a song from a list always replaces the up-next queue, even when
@@ -882,8 +890,158 @@ class MusicBridgeImpl(
     }
 
     override fun next() {
+        if (st.heartMode) {
+            val nextSong = heartStream.removeFirstOrNull()
+            if (nextSong != null) {
+                rememberPlayed(nextSong.id)
+                start(nextSong)
+                syncHeartQueue()
+                refillHeartStream()
+                scope.launch(Dispatchers.IO) {
+                    heartStream.firstOrNull()?.let { runCatching { prefetchSongCache(it) } }
+                }
+                return
+            }
+            // 窗口空了：先补一次，补不到就回落到普通队列。
+            refillHeartStream()
+            heartStream.removeFirstOrNull()?.let {
+                rememberPlayed(it.id)
+                start(it)
+                return
+            }
+        }
         if (queue.size <= 1) return
         advanceQueue()
+    }
+
+    private fun rememberPlayed(id: Long) {
+        recentPlayed.addLast(id)
+        while (recentPlayed.size > 50) recentPlayed.removeFirst()
+    }
+
+    override fun enterHeartMode(fromHome: Boolean) {
+        if (st.heartMode) return
+        if (!st.loggedIn) {
+            showToast("需要登录网易云才能使用心动模式")
+            return
+        }
+        heartSavedQueue = queue
+        heartSavedIndex = queueIndex
+        st.heartMode = true
+        st.heartModeFromHome = fromHome
+        st.heartRecommendedIds = emptySet()
+        heartStream.clear()
+        scope.launch {
+            fillHeartStream(5)
+            heartStream.removeFirstOrNull()?.let { first ->
+                rememberPlayed(first.id)
+                start(first)
+                syncHeartQueue()
+            }
+            heartStream.firstOrNull()?.let { next ->
+                withContext(Dispatchers.IO) { runCatching { prefetchSongCache(next) } }
+            }
+        }
+    }
+
+    override fun exitHeartMode() {
+        if (!st.heartMode) return
+        if (st.heartModeFromHome) return
+        st.heartMode = false
+        st.heartModeFromHome = false
+        st.heartRecommendedIds = emptySet()
+        heartStream.clear()
+        heartPool.clear()
+        val saved = heartSavedQueue
+        heartSavedQueue = null
+        if (!saved.isNullOrEmpty()) {
+            queue = saved
+            queueIndex = heartSavedIndex.coerceIn(0, saved.lastIndex)
+            st.playQueue = queue
+            st.queueIndex = queueIndex
+        }
+    }
+
+    override fun setHeartRatio(value: Float) {
+        st.heartRatio = value.coerceIn(0.2f, 0.6f)
+        // 比例变了，窗口重新生成（当前播放不受影响）。
+        heartStream.clear()
+        scope.launch { fillHeartStream(5) }
+    }
+
+    /** 补窗口：按比例交替取「红心老歌」与「算法推荐」。 */
+    private suspend fun fillHeartStream(target: Int) {
+        while (heartStream.size < target) {
+            val wantRecommend = heartStream.size >= 2 && heartStream.size % 3 == 2
+            val pick = if (wantRecommend) nextRecommended() else nextLikedSong()
+                ?: nextRecommended()
+            if (pick == null) break
+            heartStream.addLast(pick)
+        }
+    }
+
+    private fun refillHeartStream() {
+        if (!st.heartMode) return
+        scope.launch { fillHeartStream(5); syncHeartQueue() }
+    }
+
+    /** 把「当前 + 接下来的心动流」写进队列，队列面板与列表标记才有内容。 */
+    private fun syncHeartQueue() {
+        if (!st.heartMode) return
+        val current = st.currentSong ?: return
+        val upcoming = heartStream.toList()
+        st.playQueue = listOf(current) + upcoming
+        st.queueIndex = 0
+    }
+
+    private suspend fun nextLikedSong(): Song? {
+        val liked = runCatching { likedPlaylistSongs() }.getOrDefault(emptyList())
+        if (liked.isEmpty()) return null
+        val filtered = liked.filter { song ->
+            song.id !in recentPlayed &&
+                heartStream.none { it.id == song.id } &&
+                st.currentSong?.id != song.id
+        }
+        return filtered.randomOrNull()
+    }
+
+    private suspend fun nextRecommended(): Song? {
+        val seed = st.currentSong?.id ?: heartStream.lastOrNull()?.id ?: return null
+        val direct = api as? NeteaseDirect ?: return null
+        val list = runCatching { direct.heartRecommend(seed) }.getOrNull().orEmpty()
+        val pick = list.firstOrNull { song ->
+            song.id !in recentPlayed &&
+                heartStream.none { it.id == song.id } &&
+                st.currentSong?.id != song.id
+        } ?: return null
+        st.heartRecommendedIds = st.heartRecommendedIds + pick.id
+        return pick
+    }
+
+    /** 「我喜欢的音乐」里的歌曲（缓存 5 分钟）。 */
+    private var likedSongsCache: List<Song> = emptyList()
+    private var likedSongsAt = 0L
+
+    private suspend fun likedPlaylistSongs(): List<Song> {
+        val now = System.currentTimeMillis()
+        if (likedSongsCache.isNotEmpty() && now - likedSongsAt < 5 * 60_000L) return likedSongsCache
+        val direct = api as? NeteaseDirect ?: return likedSongsCache
+        val songs = runCatching { direct.likedSongs() }.getOrNull().orEmpty()
+        if (songs.isNotEmpty()) {
+            likedSongsCache = songs
+            likedSongsAt = now
+        }
+        return likedSongsCache
+    }
+
+    /** A new queue was started from a list: heart mode no longer applies. */
+    private fun leaveHeartModeForNewQueue() {
+        if (!st.heartMode) return
+        st.heartMode = false
+        st.heartModeFromHome = false
+        st.heartRecommendedIds = emptySet()
+        heartStream.clear()
+        heartSavedQueue = null
     }
 
     private fun advanceQueue() {
@@ -1179,13 +1337,22 @@ class MusicBridgeImpl(
     /** Cache lyrics + cover of a played song so its detail page opens instantly next time. */
     /** Downloads the next queue song into the playback cache while this one plays. */
     private suspend fun prefetchNextTrack(current: Song) {
+        if (st.heartMode) {
+            heartStream.firstOrNull()?.let { prefetchSongCache(it) }
+            return
+        }
         if (queue.size <= 1) return
         val nextSong = queue.getOrNull((queueIndex + 1) % queue.size) ?: return
         if (nextSong.id == current.id) return
+        prefetchSongCache(nextSong)
+    }
+
+    /** Warm the playback cache for [song] without changing what is playing. */
+    private suspend fun prefetchSongCache(song: Song) {
         val quality = targetQualityLevel()
-        if (player.hasCompleteCache(nextSong.id, quality, nextSong.sizeBytes)) return
-        val url = resolveUrl(nextSong) ?: return
-        player.prefetchToCache(nextSong.id, quality, url)
+        if (player.hasCompleteCache(song.id, quality, song.sizeBytes)) return
+        val url = resolveUrl(song) ?: return
+        player.prefetchToCache(song.id, quality, url)
     }
 
     private suspend fun prefetch(song: Song) {

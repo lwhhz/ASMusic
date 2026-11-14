@@ -91,7 +91,14 @@ class MusicState {
     var amllMaskProfanity by mutableStateOf(true)
     var posterConfig by mutableStateOf(PosterConfig())
     var amllStaticBg by mutableStateOf(false)
+    /** 心动模式进行中（仅本次会话，不持久化）。 */
     var heartMode by mutableStateOf(false)
+    /** 心动模式是首页卡片进入的：这种没有"关闭"概念。 */
+    var heartModeFromHome by mutableStateOf(false)
+    /** 推荐占比：0.2 / 0.4 / 0.6。 */
+    var heartRatio by mutableStateOf(0.4f)
+    /** 当前流里来自算法推荐的歌曲 id，用于列表标记。 */
+    var heartRecommendedIds by mutableStateOf(setOf<Long>())
     /** 本次会话里红心过的歌曲，用于心形按钮的即时反馈。 */
     var likedIds by mutableStateOf(setOf<Long>())
     var kugouKrcEnabled by mutableStateOf(false)
@@ -285,8 +292,17 @@ interface MusicBridge {
     /** 红心：写入网易云「我喜欢的音乐」。 */
     suspend fun likeSong(id: Long, like: Boolean): Boolean = false
 
-    /** 心动池里的歌曲（首页「心动模式」卡片用它取封面与播放）。 */
+    /** 心动池里的歌曲（首页「心动模式」卡片用它取封面）。 */
     suspend fun heartPoolSongs(): List<Song> = emptyList()
+
+    /** 进入心动模式；[fromHome] 表示从首页卡片进入（无关闭概念）。 */
+    fun enterHeartMode(fromHome: Boolean) {}
+
+    /** 退出心动模式并回到进入前的队列位置（首页卡片进入时不提供该操作）。 */
+    fun exitHeartMode() {}
+
+    /** 设置推荐占比 20% / 40% / 60%。 */
+    fun setHeartRatio(value: Float) {}
 
     /** 歌手页的专辑列表。 */
     suspend fun artistAlbums(id: Long): List<Playlist> = emptyList()

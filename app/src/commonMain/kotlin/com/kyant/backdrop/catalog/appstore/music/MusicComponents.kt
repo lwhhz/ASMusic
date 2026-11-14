@@ -178,7 +178,14 @@ fun SongRow(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                MarqueeText(song.name, AS.rowTitle())
+                val recommended = song.id in MusicServices.state.heartRecommendedIds
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    MarqueeText(song.name, AS.rowTitle(), modifier = Modifier.weight(1f, fill = false))
+                    if (recommended) {
+                        Spacer(Modifier.width(6.dp))
+                        Txt("心动推荐", AS.caption().copy(fontSize = 10.sp, color = AS.Blue))
+                    }
+                }
                 Txt("${song.artist} · ${song.album}", AS.subtitle().copy(fontSize = 13.sp), maxLines = 1)
             }
             Spacer(Modifier.width(10.dp))

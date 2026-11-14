@@ -1,5 +1,27 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.border
+import com.kyant.shapes.Capsule
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import com.kyant.shapes.RoundedRectangle
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.blur as glassBlur
+import com.kyant.backdrop.drawBackdrop
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -68,6 +90,7 @@ fun TodayPage(
     onOpenSong: (Long) -> Unit,
     onAvatar: () -> Unit,
     onEditCards: () -> Unit,
+    backdrop: com.kyant.backdrop.Backdrop? = null,
     modifier: Modifier = Modifier
 ) {
     val state = MusicServices.state
@@ -110,11 +133,10 @@ fun TodayPage(
             if (heartPool.isNotEmpty()) {
                 HeartModeCard(
                     pool = heartPool,
+                    backdrop = backdrop,
                     onPlay = {
-                        heartPool.firstOrNull()?.let { first ->
-                            bridge.playFrom(heartPool, first)
-                            bridge.showToast("心动模式 · ${first.name}")
-                        }
+                        bridge.enterHeartMode(true)
+                        bridge.showToast("心动模式已开启")
                     }
                 )
             }
@@ -135,6 +157,69 @@ fun TodayPage(
     }
 }
 
+
+/**
+ * 纯 Compose 实现的玻璃材质（不采样背景，避免平台层 backdrop 在本机崩溃）：
+ * 顶部高光渐变 + 内描边 + 外投影 + 底部暗边，接近 iOS 磨砂玻璃的观感。
+ */
+@Composable
+fun GlassSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(18.dp),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    blurredContent: (@Composable BoxScope.() -> Unit)? = null,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier
+            .shadow(
+                elevation = 20.dp,
+                shape = shape,
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = .35f),
+                spotColor = Color.Black.copy(alpha = .45f)
+            )
+            .clip(shape)
+    ) {
+        // 模糊层铺满整个表面（不受 contentPadding 影响），否则只有文字区被模糊。
+        if (blurredContent != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .blur(26.dp, edgeTreatment = BlurredEdgeTreatment.Rectangle)
+            ) { blurredContent() }
+            Box(Modifier.matchParentSize().background(Color(0x52000000)))
+        }
+        // 表层玻璃：高光渐变 + 内暗 + 描边，全部铺满
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.00f to Color.White.copy(alpha = .26f),
+                        0.45f to Color.White.copy(alpha = .14f),
+                        1.00f to Color.White.copy(alpha = .08f)
+                    )
+                )
+        )
+        Box(Modifier.matchParentSize().background(Color(0x1A000000)))
+        Box(
+            Modifier
+                .matchParentSize()
+                .border(
+                    width = 0.9.dp,
+                    brush = Brush.verticalGradient(
+                        0.0f to Color.White.copy(alpha = .55f),
+                        0.5f to Color.White.copy(alpha = .18f),
+                        1.0f to Color.Black.copy(alpha = .22f)
+                    ),
+                    shape = shape
+                )
+        )
+        Box(Modifier.padding(contentPadding)) { content() }
+    }
+}
+
 /**
  * 首页「心动模式」卡片：封面取心动池第一首，标题固定为「心动模式」。
  * 点击播放整个心动池，不改变当前播放队列。
@@ -142,9 +227,14 @@ fun TodayPage(
 @Composable
 private fun HeartModeCard(
     pool: List<Song>,
+    backdrop: com.kyant.backdrop.Backdrop?,
     onPlay: () -> Unit
 ) {
+    val bridge = MusicServices.bridge
+    val state = MusicServices.state
+    var menuOpen by remember { mutableStateOf(false) }
     val first = pool.firstOrNull() ?: return
+
     Box(
         Modifier
             .fillMaxWidth()
@@ -158,7 +248,7 @@ private fun HeartModeCard(
             Modifier
                 .fillMaxSize()
                 .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                    Brush.verticalGradient(
                         0.00f to Color.Transparent,
                         0.55f to Color.Transparent,
                         0.82f to Color(0x59000000),
@@ -166,14 +256,100 @@ private fun HeartModeCard(
                     )
                 )
         )
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, end = 84.dp, bottom = 18.dp)) {
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, end = 84.dp, bottom = 18.dp)
+        ) {
             Txt("HEART MODE", AS.eyebrow().copy(color = Color.White.copy(.82f)))
             Spacer(Modifier.height(6.dp))
             MarqueeText("心动模式", AS.cardTitle().copy(fontSize = 24.sp, color = Color.White))
-            Txt("${first.artist} · 共 ${pool.size} 首", AS.subtitle().copy(color = Color.White.copy(.8f)), maxLines = 1)
         }
         Box(Modifier.align(Alignment.BottomEnd).padding(18.dp)) {
             PlayPauseButton(false, onPlay, size = 44.dp, filled = true)
+        }
+
+        // 胶囊：固定右上角，自身不因菜单展开而移动
+        Box(Modifier.align(Alignment.TopEnd).padding(14.dp)) {
+            val chipPress = remember { MutableInteractionSource() }
+            val chipPressed by chipPress.collectIsPressedAsState()
+            val chipScale by animateFloatAsState(
+                targetValue = if (chipPressed) 0.92f else 1f,
+                animationSpec = spring(dampingRatio = .55f, stiffness = 900f),
+                label = "chip-scale"
+            )
+            Box(
+                Modifier
+                    .graphicsLayer {
+                        scaleX = chipScale
+                        scaleY = chipScale
+                    }
+                    .clickable(
+                        interactionSource = chipPress,
+                        indication = null
+                    ) { menuOpen = !menuOpen }
+            ) {
+                GlassSurface(
+                    shape = RoundedCornerShape(999.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    blurredContent = {
+                        CoverImage(first.coverUrl, first.id, Modifier.fillMaxSize())
+                    }
+                ) {
+                    Txt(
+                        "${(state.heartRatio * 100).toInt()}%",
+                        AS.caption().copy(color = Color.White)
+                    )
+                }
+            }
+        }
+
+        // 菜单：作为卡片子节点右下对齐到胶囊右缘，不参与胶囊布局
+        androidx.compose.animation.AnimatedVisibility(
+            visible = menuOpen,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 52.dp, end = 14.dp),
+            enter = androidx.compose.animation.scaleIn(
+                initialScale = 0.84f,
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f),
+                animationSpec = spring(dampingRatio = .62f, stiffness = 620f)
+            ) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.scaleOut(
+                targetScale = 0.92f,
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f),
+                animationSpec = androidx.compose.animation.core.tween(140)
+            ) + androidx.compose.animation.fadeOut()
+        ) {
+            GlassSurface(
+                shape = RoundedCornerShape(18.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
+                blurredContent = {
+                    CoverImage(first.coverUrl, first.id, Modifier.fillMaxSize())
+                }
+            ) {
+                Column {
+                    listOf(0.2f, 0.4f, 0.6f).forEach { ratio ->
+                        Box(
+                            Modifier
+                                .width(112.dp)
+                                .tap {
+                                    bridge.setHeartRatio(ratio)
+                                    menuOpen = false
+                                }
+                                .padding(horizontal = 14.dp, vertical = 9.dp)
+                        ) {
+                            Txt(
+                                "推荐 ${(ratio * 100).toInt()}%",
+                                AS.body().copy(
+                                    fontSize = 13.sp,
+                                    color = if (state.heartRatio == ratio) AS.Blue else Color.White
+                                )
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

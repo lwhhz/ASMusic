@@ -1,5 +1,6 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.animateDpAsState
@@ -338,10 +339,42 @@ private fun ExpandedControls(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CircleIconButton(onClick = { state.queueSheetOpen = true }) {
+            val streamOnly = state.heartMode && state.heartModeFromHome
+            CircleIconButton(
+                onClick = { if (!streamOnly) state.queueSheetOpen = true },
+                modifier = if (streamOnly) Modifier.alpha(0.35f) else Modifier
+            ) {
                 QueueGlyph(Modifier.size(17.dp))
             }
-            CircleIconButton(onClick = { bridge.setPlayMode(state.playMode.next()) }) {
+            // 心动模式开关：普通列表也能开启/关闭（首页进入的同样允许退出）。
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        if (state.heartMode) AS.Blue.copy(alpha = .20f)
+                        else Color.White.copy(alpha = .10f)
+                    )
+                    .then(
+                        if (streamOnly) Modifier
+                        else Modifier.tap {
+                            if (state.heartMode) bridge.exitHeartMode()
+                            else bridge.enterHeartMode(false)
+                        }
+                    )
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Txt(
+                    if (state.heartMode && !streamOnly) "心动模式 ✕" else "心动模式",
+                    AS.caption().copy(
+                        fontSize = 11.sp,
+                        color = if (state.heartMode) AS.Blue else Color.White.copy(alpha = .75f)
+                    )
+                )
+            }
+            CircleIconButton(
+                onClick = { if (!streamOnly) bridge.setPlayMode(state.playMode.next()) },
+                modifier = if (streamOnly) Modifier.alpha(0.35f) else Modifier
+            ) {
                 PlayModeGlyph(state.playMode, Modifier.size(17.dp))
             }
         }

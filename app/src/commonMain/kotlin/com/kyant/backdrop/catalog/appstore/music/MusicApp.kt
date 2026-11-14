@@ -369,7 +369,7 @@ fun MusicApp() {
             ) {
                 PageTransition(tab) { tabIndex ->
                     when (tabIndex) {
-                        0 -> TodayPage(todayScroll, ::openPlaylist, ::openSong, { accountOpen = true }, { pickerOpen = true })
+                        0 -> TodayPage(todayScroll, ::openPlaylist, ::openSong, { accountOpen = true }, { pickerOpen = true }, backdrop)
                         1 -> NewReleasesPage(newScroll, ::openPlaylist, ::openAlbum, ::openSongFromList, { accountOpen = true })
                         2 -> MyPlaylistsPage(mineScroll, ::openPlaylist, ::openSongFromList, { accountOpen = true })
                         3 -> StatsPage(statsScroll, { accountOpen = true }, { goalOpen = true })

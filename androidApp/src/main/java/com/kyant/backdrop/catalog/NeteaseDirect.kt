@@ -494,6 +494,22 @@ class NeteaseDirect(private val config: AppConfig) : MusicApi {
         }.getOrDefault(emptyList())
     }
 
+    /** 「我喜欢的音乐」全部歌曲（心动模式的老歌池）。 */
+    suspend fun likedSongs(): List<Song> = withContext(Dispatchers.IO) {
+        runCatching {
+            val pid = likedPlaylist() ?: return@runCatching emptyList()
+            val body = weapi(
+                "/api/v6/playlist/detail",
+                JSONObject().put("id", pid).put("n", 1000).put("s", 0)
+            ).body ?: return@runCatching emptyList()
+            val tracks = body.optJSONObject("playlist")?.optJSONArray("tracks")
+                ?: return@runCatching emptyList()
+            (0 until tracks.length()).mapNotNull { i ->
+                tracks.optJSONObject(i)?.let { parseNeteaseSong(it) }
+            }
+        }.getOrDefault(emptyList())
+    }
+
     private suspend fun likedPlaylist(): Long? {
         likedPlaylistId?.let { return it }
         // /api/user/account was retired (404); the current client uses nuser/account/get.
