@@ -38,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -184,6 +186,17 @@ fun SongRow(
 /**
  * iOS-style depth for caption areas: a blurred copy of the artwork sitting behind the
  * dark gradient, so the text melts into the cover instead of sitting on a flat scrim.
+ *
+ * 原来是"一整块固定半径的高斯模糊铺满矩形"：带内一个模糊强度、带外完全清晰，
+ * 上沿留下一条水平硬边，看起来像在清晰图上贴了一块毛玻璃。
+ *
+ * 现在给模糊层加一条垂直 alpha 蒙版（`DstIn`），并把曲线做成缓入缓出：带的下部
+ * 完全不透明，往上 alpha 缓慢衰减到 0，和上面的清晰封面连续衔接，不再有分界线。
+ *
+ * 这里 `blur` 故意放在 `drawWithContent` 外层：让高斯先作用在"已经带蒙版的图层"
+ * 上，蒙版的硬台阶会被一起抹开，过渡比"先模糊再蒙版"更柔。
+ * （试过叠三层不同半径做真·渐进模糊：DstIn 会让每层都变成半透明，摞起来会发灰、
+ * 露出下面的暗色遮罩形成色块，所以保持单层。）
  */
 @Composable
 private fun ArtworkBlurBand(
@@ -196,9 +209,28 @@ private fun ArtworkBlurBand(
         CoverImage(
             url,
             seed,
-            // Keep Unbounded here: the blurred band relies on the blur spilling
-            // past its own bounds, otherwise the card loses the soft gradient edge.
-            Modifier.fillMaxSize().blur(32.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+            Modifier
+                .fillMaxWidth()
+                // 向上溢出一段再交给 alpha 蒙版淡出：过渡区不局限在带高之内，
+                // 起点被推到卡片更高的位置，清晰↔模糊的转折更不容易被看出来。
+                .height(height * 1.35f)
+                .align(Alignment.BottomCenter)
+                .blur(42.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0.00f to Color.Black.copy(alpha = 0.00f),
+                            0.30f to Color.Black.copy(alpha = 0.14f),
+                            0.58f to Color.Black.copy(alpha = 0.58f),
+                            0.78f to Color.Black.copy(alpha = 0.94f),
+                            1.00f to Color.Black
+                        ),
+                        blendMode = BlendMode.DstIn
+                    )
+                },
+            // 反正要糊，按小图解码：显存和模糊采样量都降一档。
+            requestEdge = 256
         )
     }
 }
