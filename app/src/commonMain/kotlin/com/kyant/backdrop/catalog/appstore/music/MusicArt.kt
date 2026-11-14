@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 
 private val CoverPalettes: List<List<Color>> = listOf(
     listOf(Color(0xFF6D5BFF), Color(0xFF241452)),
@@ -43,7 +45,14 @@ private val CoverPalettes: List<List<Color>> = listOf(
     listOf(Color(0xFFA3E635), Color(0xFF365314))
 )
 
-/** Network cover with an original gradient placeholder while loading / offline. */
+/**
+ * Network cover with an original gradient placeholder while loading / offline.
+ *
+ * 用 [key] 包住整段内容，而不是只把 url 交给 `remember` 的 key：
+ * 换歌时不只是要丢掉旧 bitmap，还要丢掉 BitmapPainter、已经 measure 过的布局节点
+ * 和画笔状态。只依赖 `remember(url)` 时，只要两首歌的 coverUrl 相同（同专辑连播、
+ * 或接口给多首歌同一个封面地址），整棵子树就会被复用，封面停在上一张。
+ */
 @Composable
 fun CoverImage(
     url: String?,
@@ -51,19 +60,32 @@ fun CoverImage(
     modifier: Modifier = Modifier,
     requestEdge: Int = 512
 ) {
-    // requestEdge 也是"要哪一张图"的一部分：同一个 url 从 512 降到 256 时必须重新取，
-    // 否则会一直复用大图（多占内存）而不走缓存里的小图。
-    var bitmap by remember(url, requestEdge) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(url, requestEdge) {
-        bitmap = if (url.isNullOrBlank()) null else {
-            runCatching { MusicServices.bridge.image(url, requestEdge) }.getOrNull()
+    key(url, seed, requestEdge) {
+        var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(url, requestEdge) {
+            val target = url
+            if (target.isNullOrBlank()) {
+                bitmap = null
+                return@LaunchedEffect
+            }
+            // 不能用 runCatching 直接包：它会把 CancellationException 一起吞掉。
+            // 快速连点下一首时，已被取消的那次加载会继续往下走并把 bitmap 写成
+            // null，把新封面盖成占位图。
+            val loaded = try {
+                MusicServices.bridge.image(target, requestEdge)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                null
+            }
+            bitmap = loaded
         }
-    }
-    val bmp = bitmap
-    if (bmp != null) {
-        Image(bmp, null, modifier, contentScale = ContentScale.Crop)
-    } else {
-        OriginalCover(seed, modifier)
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(bmp, null, modifier, contentScale = ContentScale.Crop)
+        } else {
+            OriginalCover(seed, modifier)
+        }
     }
 }
 
@@ -78,18 +100,29 @@ fun OriginalCover(seed: Long, modifier: Modifier = Modifier) {
  */
 @Composable
 fun RemoteAvatar(url: String?, seed: Long, modifier: Modifier = Modifier) {
-    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(url) {
-        bitmap = if (url.isNullOrBlank()) null else {
-            runCatching { MusicServices.bridge.image(url) }.getOrNull()
+    key(url, seed) {
+        var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(url) {
+            val target = url
+            if (target.isNullOrBlank()) {
+                bitmap = null
+                return@LaunchedEffect
+            }
+            bitmap = try {
+                MusicServices.bridge.image(target)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                null
+            }
         }
-    }
-    Box(modifier.clip(CircleShape)) {
-        val bmp = bitmap
-        if (bmp != null) {
-            Image(bmp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        } else {
-            Canvas(Modifier.fillMaxSize()) { drawAvatarPlaceholder(seed) }
+        Box(modifier.clip(CircleShape)) {
+            val bmp = bitmap
+            if (bmp != null) {
+                Image(bmp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                Canvas(Modifier.fillMaxSize()) { drawAvatarPlaceholder(seed) }
+            }
         }
     }
 }

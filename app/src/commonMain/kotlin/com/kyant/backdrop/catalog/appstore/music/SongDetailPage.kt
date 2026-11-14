@@ -132,6 +132,10 @@ fun SongDetailPage(
 
     val isCurrent = state.currentSong?.id == current.id
     val playing = isCurrent && state.playing
+    // 封面优先用播放器里正在播的那一份：songDetail 接口偶尔不带 picUrl，
+    // 落到 Fixtures 兜底后 coverUrl 会变 null，这一页的封面就会掉成占位图。
+    val coverUrl = state.currentSong?.takeIf { it.id == current.id }?.coverUrl
+        ?: current.coverUrl
     // One source of truth for the stats row and the comment header.
     val commentTotal = when {
         social?.hasComments == true -> social?.commentCount ?: 0
@@ -254,7 +258,7 @@ fun SongDetailPage(
                         .size(224.dp)
                         .clip(RoundedCornerShape(24.dp))
                 ) {
-                    CoverImage(current.coverUrl, current.id, Modifier.fillMaxSize())
+                    CoverImage(coverUrl, current.id, Modifier.fillMaxSize())
                     if (current.id in state.heartRecommendedIds) {
                         Box(
                             Modifier
@@ -467,7 +471,7 @@ fun SongDetailPage(
                         CircleButton(CircleKind.Back, onBack, Modifier.size(38.dp))
                         Spacer(Modifier.width(10.dp))
                         Box(Modifier.size(34.dp).clip(RoundedCornerShape(8.dp))) {
-                            CoverImage(current.coverUrl, current.id, Modifier.fillMaxSize())
+                            CoverImage(coverUrl, current.id, Modifier.fillMaxSize())
                         }
                         Spacer(Modifier.width(10.dp))
                         Row(
@@ -507,7 +511,7 @@ fun SongDetailPage(
                     CircleButton(CircleKind.Back, onBack, Modifier.size(38.dp))
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.size(34.dp).clip(RoundedCornerShape(8.dp))) {
-                        CoverImage(current.coverUrl, current.id, Modifier.fillMaxSize())
+                        CoverImage(coverUrl, current.id, Modifier.fillMaxSize())
                     }
                     Spacer(Modifier.width(10.dp))
                     Row(
