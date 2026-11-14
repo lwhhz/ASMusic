@@ -985,7 +985,13 @@ class MusicBridgeImpl(
     // 心动模式不再改写播放队列：模式进行时禁用队列与播放模式按钮，退出时恢复进入前的快照。
 
     private suspend fun nextRecommended(): Song? {
-        val seed = st.currentSong?.id ?: heartStream.lastOrNull()?.id ?: return null
+        // 首页卡片进入时还没有播放中的歌曲：用红心歌单/今日推荐里的一首当种子。
+        val seed = st.currentSong?.id
+            ?: heartStream.lastOrNull()?.id
+            ?: heartPool.firstOrNull()?.id
+            ?: likedSongsCache.firstOrNull()?.id
+            ?: runCatching { api.dailySongs()?.firstOrNull()?.id }.getOrNull()
+            ?: return null
         val direct = api as? NeteaseDirect ?: return null
         val list = runCatching { direct.heartRecommend(seed) }.getOrNull().orEmpty()
         val pick = list.firstOrNull { song ->

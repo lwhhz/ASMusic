@@ -1,5 +1,6 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +60,10 @@ fun FineTunePage(
 ) {
     val bridge = MusicServices.bridge
     val state = MusicServices.state
+    // 每个 group 进来都从顶部开始，避免沿用上一个三级页的滚动位置。
+    LaunchedEffect(group) {
+        runCatching { scrollState.scrollTo(0) }
+    }
 
     Column(
         Modifier

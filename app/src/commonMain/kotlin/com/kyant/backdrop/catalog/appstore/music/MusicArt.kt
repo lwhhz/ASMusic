@@ -228,19 +228,32 @@ private fun vividColor(color: Color, hueShift: Float, satBoost: Float, valueScal
  * near-identical copies of the same cover.
  */
 fun lyricCardColors(palette: List<Color>, songSeed: Long, index: Int): List<Color> {
-    val source = when {
-        palette.size >= 4 -> palette
-        palette.isNotEmpty() -> List(4) { palette[it % palette.size] }
-        else -> LyricFallbackPalette
+    val source = if (palette.isNotEmpty()) palette else LyricFallbackPalette
+    val base = source[0]
+    // 封面主色 + 受控随机：不仅换色相，还改变「色相跨度 / 取色组合 / 明暗主导」，
+    // 让相邻卡片的渐变色结构本身不同，而不只是同一个渐变换个颜色。
+    val seed = songSeed * 31L + index.toLong() * 0x9E3779B1L
+    fun rnd(salt: Long): Float {
+        var x = seed xor (salt * 0x85EBCA6BL)
+        x = (x xor (x ushr 33)) * -0x6B2FB0B8AA2B4DB9L
+        x = (x xor (x ushr 29)) * 0x2545F4914F6CDD1DL
+        x = x xor (x ushr 32)
+        return ((x ushr 11).toDouble() / (1L shl 53).toDouble()).toFloat().coerceIn(0f, 1f)
     }
-    val offset = (((songSeed / 7L + index * 3L) % 4L + 4L) % 4L).toInt()
-    val seedHue = (kotlin.math.abs(songSeed) % 360L).toFloat()
-    val cardHue = seedHue + index * 137.508f
+    val hueShift = (rnd(1L) - .5f) * 40f          // ±20°
+    val spread = 18f + rnd(2L) * 92f              // 18°~110°：相邻 / 三角 / 互补
+    val satScale = 0.85f + rnd(3L) * 0.35f
+    val valueShift = -0.28f + rnd(4L) * 0.38f
+    val pickA = source[(1 + (rnd(5L) * (source.size - 1)).toInt()) % source.size]
+    val pickB = source[(1 + (rnd(6L) * (source.size - 1)).toInt()) % source.size]
+    val darkFirst = rnd(7L) > 0.5f
+    val l1 = if (darkFirst) 1.06f else 0.9f
+    val l2 = if (darkFirst) 0.9f else 1.06f
     return listOf(
-        vividColor(source[offset], cardHue, 1.35f, 1.02f),
-        vividColor(source[(offset + 1) % 4], cardHue + 31f, 1.52f, .82f),
-        vividColor(source[(offset + 2) % 4], cardHue + 108f, 1.28f, .68f),
-        vividColor(source[(offset + 3) % 4], cardHue - 14f, 1.46f, 1.04f)
+        vividColor(base, hueShift, satScale * 1.12f, l1 + valueShift * .6f),
+        vividColor(pickA, hueShift + spread, satScale, l2 + valueShift * .5f),
+        vividColor(base, hueShift - spread * .65f, satScale * .9f, .92f + valueShift * .4f),
+        vividColor(pickB, hueShift + spread * 1.45f, satScale * 1.06f, 1.02f + valueShift * .3f)
     )
 }
 

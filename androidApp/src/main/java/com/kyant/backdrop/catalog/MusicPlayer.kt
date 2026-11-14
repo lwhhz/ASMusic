@@ -66,7 +66,7 @@ class MusicPlayer(
             state.positionMs = player.currentPosition.coerceAtLeast(0L)
             val d = player.duration
             if (d > 0) state.durationMs = d
-            if (tickerRunning) handler.postDelayed(this, 200L)
+            if (tickerRunning) handler.postDelayed(this, 500L)
         }
     }
 

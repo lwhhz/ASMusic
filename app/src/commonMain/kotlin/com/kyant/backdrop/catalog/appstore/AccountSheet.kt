@@ -61,6 +61,7 @@ fun SettingsSheet(
     onCache: () -> Unit = {},
     onCustomize: () -> Unit = {},
     onQuality: () -> Unit = {},
+    onOpenFineTune: (com.kyant.backdrop.catalog.appstore.music.FineTuneGroup) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val state = MusicServices.state
@@ -197,27 +198,45 @@ fun SettingsSheet(
                 SheetLinkRow(if (state.loggedIn) "重新扫码登录" else "链接网易云账号", onNeteaseLogin)
                 if (state.loggedIn) {
                     SheetDivider()
-                    SheetLinkRow(
-                        "退出登录",
-                        onClick = { logoutConfirm = true },
-                        color = Color(0xFFFF453A)
-                    )
+                    SheetLinkRow("退出登录", onClick = { logoutConfirm = true }, color = Color(0xFFFF453A))
                 }
             }
 
             Spacer(Modifier.height(22.dp))
-            Txt("播放与外观", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            Txt("播放", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
             SheetGroup {
-                SheetLinkRow("JS 音乐源脚本导入", onScriptImport)
+                SheetLinkRow("播放胶囊", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Capsule) })
                 SheetDivider()
-                SheetLinkRow("播放、外观与歌词", onCustomize, color = AS.Blue)
+                SheetValueRow("缓存与预加载", formatBytes(state.audioCacheLimitMb * 1024L * 1024L), onClick = {
+                    onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Cache)
+                })
+                SheetDivider()
+                SheetLinkRow("JS 音乐源脚本导入", onScriptImport)
             }
-            Spacer(Modifier.height(10.dp))
-            Txt(
-                "播放胶囊、顶栏风格、界面大小、歌词与歌词源都在这里。" +
-                    "后台常驻权限用于保持 JS 音源解析服务；系统媒体控制与流体云由系统自动接入。",
-                AS.caption()
-            )
+
+            Spacer(Modifier.height(22.dp))
+            Txt("外观", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            SheetGroup {
+                SheetLinkRow("顶栏、界面大小与卡片", onCustomize)
+                SheetDivider()
+                SheetLinkRow("分享海报", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Poster) })
+            }
+
+            Spacer(Modifier.height(22.dp))
+            Txt("歌词", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            SheetGroup {
+                SheetLinkRow("卡片歌词", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Lyrics) })
+                SheetDivider()
+                SheetLinkRow("沉浸式歌词", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Immersive) })
+                SheetDivider()
+                SheetLinkRow("沉浸式歌词背景", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Fluid) })
+            }
+
+            Spacer(Modifier.height(22.dp))
+            Txt("歌词源", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            SheetGroup {
+                SheetLinkRow("TTML 与酷狗 KRC", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Source) })
+            }
 
             Spacer(Modifier.height(22.dp))
             Txt("维护", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
@@ -226,7 +245,7 @@ fun SettingsSheet(
                 SheetDivider()
                 SheetValueRow("缓存管理", formatBytes(state.cacheInfo.totalBytes), onCache)
                 SheetDivider()
-                SheetValueRow("版本", "1.3.60", onClick = null)
+                SheetValueRow("版本", "1.3.61", onClick = null)
             }
 
             Spacer(Modifier.height(24.dp))

@@ -128,45 +128,18 @@ fun LyricCards(
             androidx.compose.runtime.derivedStateOf { listState.isScrollInProgress }
         }
     }
-    LaunchedEffect(currentIndex, userMoved, manualHold, followSuppressed, scrollInProgress) {
+    LaunchedEffect(currentIndex, userMoved, manualHold, followSuppressed) {
         if (userMoved || manualHold || followSuppressed) return@LaunchedEffect
-        if (!listState.isScrollInProgress) {
-            val cur = listState.firstVisibleItemIndex
-            val curMod = ((cur % size) + size) % size
-            // An animation cancelled mid-way (lyric changed while the row was still
-            // moving) leaves the card halfway: the index already matches, so nothing
-            // used to correct it again. Realign whenever the offset is not zero.
-            if (curMod == currentIndex && listState.firstVisibleItemScrollOffset != 0) {
-                runCatching { listState.animateScrollToItem(cur) }
-                return@LaunchedEffect
-            }
-            if (curMod != currentIndex) {
-                var delta = currentIndex - curMod
-                if (delta < 0) delta += size
-                if (delta > size / 2) delta -= size
-                runCatching {
-                    // Fast-out-slow-in instead of the default linear-ish scroll.
-                    val info = listState.layoutInfo.visibleItemsInfo
-                    val stride = if (info.size >= 2) info[1].offset - info[0].offset
-                    else info.firstOrNull()?.size ?: 0
-                    if (stride > 0) {
-                        // Manual eased scroll: fast start, slow settle.
-                        val total = delta * stride.toFloat()
-                        val startTime = withFrameNanos { it }
-                        var last = 0f
-                        while (true) {
-                            val now = withFrameNanos { it }
-                            val t = (((now - startTime) / 1_000_000f) / 420f).coerceIn(0f, 1f)
-                            val target = total * FastOutSlowInEasing.transform(t)
-                            listState.scrollBy(target - last)
-                            last = target
-                            if (t >= 1f) break
-                        }
-                    } else {
-                        listState.animateScrollToItem(cur + delta)
-                    }
-                }
-            }
+        // 声明式跟随：算出最近的目标页，交给 LazyRow 自己吸附。
+        // 不再判断 isScrollInProgress，避免动画被取消后卡在两页之间。
+        val cur = listState.firstVisibleItemIndex
+        val base = cur - (cur % size)
+        var target = base + currentIndex
+        // 取距离最近的那一个循环副本，避免突然翻半圈。
+        if (target - cur > size / 2) target -= size
+        if (cur - target > size / 2) target += size
+        if (cur != target || listState.firstVisibleItemScrollOffset != 0) {
+            runCatching { listState.animateScrollToItem(target) }
         }
     }
 

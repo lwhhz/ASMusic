@@ -290,8 +290,12 @@ fun MusicApp() {
 
     fun popPage() {
         val closingCustomize = stack.lastOrNull() == "c:"
+        val closingFineTune = stack.lastOrNull()?.startsWith("f:") == true
+        // 从「设置」直接进入的三级页，返回时应回到设置列表；从自定义页进入的
+        // 则回到自定义页，不重新弹设置。
+        val parentIsCustomize = stack.dropLast(1).lastOrNull() == "c:"
         if (stack.isNotEmpty()) stack = stack.dropLast(1)
-        if (closingCustomize) closeSettingsChild()
+        if (closingCustomize || (closingFineTune && !parentIsCustomize)) closeSettingsChild()
     }
 
     // Follow playback changes while a song page is open (next/previous, queue jump,
@@ -581,6 +585,10 @@ fun MusicApp() {
 
         SettingsSheet(
             visible = accountOpen,
+            onOpenFineTune = { group ->
+                accountOpen = false
+                stack = stack + "f:${group.name}"
+            },
             onDismiss = {
                 accountOpen = false
                 settingsReturn = false

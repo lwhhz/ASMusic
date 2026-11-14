@@ -897,13 +897,6 @@ fun CustomizePage(
                 )
                 Spacer(Modifier.height(14.dp))
                 SettingDivider()
-                Spacer(Modifier.height(10.dp))
-                Spacer(Modifier.height(8.dp))
-                SettingValueLink(
-                    "播放胶囊",
-                    if (state.capsuleCorner >= .995f) "胶囊"
-                    else "${(state.capsuleCorner * 52f).toInt()} dp"
-                ) { onOpenFineTune(FineTuneGroup.Capsule) }
             }
             Spacer(Modifier.height(12.dp))
             Txt(
@@ -913,20 +906,6 @@ fun CustomizePage(
                 AS.caption()
             )
 
-            Spacer(Modifier.height(10.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                SettingValueLink(
-                    "缓存与预加载",
-                    "${formatBytes(state.audioCacheLimitMb * 1024L * 1024L)} · " +
-                        if (state.prefetchNext) "预缓存开" else "预缓存关"
-                ) { onOpenFineTune(FineTuneGroup.Cache) }
-            }
 
             Spacer(Modifier.height(22.dp))
             Txt("外观 · 详情页", AS.caption().copy(color = AS.Text3))
@@ -1054,11 +1033,6 @@ fun CustomizePage(
                     "让歌词卡片的取色背景缓慢流动",
                     state.lyricFlow
                 ) { bridge.setLyricFlow(it) }
-                SettingDivider()
-                SettingValueLink(
-                    "卡片歌词",
-                    "光晕 ${(state.lyricGlow * 100).toInt()}% · 字号 ${state.lyricFont.toInt()} sp"
-                ) { onOpenFineTune(FineTuneGroup.Lyrics) }
             }
             Spacer(Modifier.height(10.dp))
             Txt(
@@ -1066,71 +1040,11 @@ fun CustomizePage(
                 AS.caption()
             )
 
-            Spacer(Modifier.height(22.dp))
-            Txt("沉浸式歌词", AS.caption().copy(color = AS.Text3))
-            Spacer(Modifier.height(8.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                SettingValueLink(
-                    "沉浸式歌词背景",
-                    "模糊 ${state.fluidBlurDp.toInt()} · 形变 ${(state.fluidWarp * 100).toInt()}%"
-                ) { onOpenFineTune(FineTuneGroup.Fluid) }
-                SettingDivider()
-                SettingValueLink(
-                    "沉浸式歌词文字",
-                    "字号 ${state.amllFontSize.toInt()} · ${if (state.amllMaskProfanity) "已遮挡" else "不遮挡"}"
-                ) { onOpenFineTune(FineTuneGroup.Immersive) }
-            }
             Spacer(Modifier.height(10.dp))
             Txt(
                 "长按歌词卡进入沉浸式歌词后生效；背景由当前歌曲封面实时生成，不是视频。",
                 AS.caption()
             )
-            Spacer(Modifier.height(22.dp))
-            Txt("分享海报", AS.caption().copy(color = AS.Text3))
-            Spacer(Modifier.height(8.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                SettingValueLink(
-                    "分享海报",
-                    "${state.posterConfig.ratio.label} · " +
-                        when (state.posterConfig.bg) {
-                            PosterBg.Blur -> "模糊封面"
-                            PosterBg.Gradient -> "流光渐变"
-                            PosterBg.Solid -> "纯色"
-                        }
-                ) { onOpenFineTune(FineTuneGroup.Poster) }
-            }
-            Spacer(Modifier.height(10.dp))
-            Txt("长按歌词卡或点分享生成海报；这里的设置只影响导出图，不影响界面。", AS.caption())
-
-            Spacer(Modifier.height(22.dp))
-            Txt("歌词源", AS.caption().copy(color = AS.Text3))
-            Spacer(Modifier.height(8.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                SettingValueLink(
-                    "逐字歌词来源",
-                    if (state.amllTtmlEnabled) "TTML 优先 · 网易云兜底" else "仅网易云歌词"
-                ) { onOpenFineTune(FineTuneGroup.Source) }
-            }
-            Spacer(Modifier.height(10.dp))
-            Txt("命中时用社区逐字歌词，未命中回退网易云。", AS.caption())
 
         }
     }
