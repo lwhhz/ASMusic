@@ -130,7 +130,9 @@ class MusicBridgeImpl(
                 scriptUrlCache.remove("${song.id}:$quality")
                 val position = st.positionMs
                 scope.launch {
-                    val url = withContext(Dispatchers.IO) { resolveUrl(song) }
+                    val tResolve = System.currentTimeMillis()
+            val url = withContext(Dispatchers.IO) { resolveUrl(song) }
+            timingLog("resolve song=${song.id} ${System.currentTimeMillis() - tResolve}ms url=${if (url.isNullOrBlank()) "null" else "ok"}")
                     if (url.isNullOrBlank()) {
                         showToast("重试失败：请检查网络或音源")
                     } else {
@@ -830,12 +832,14 @@ class MusicBridgeImpl(
         }
         val token = ++playToken
         scope.launch {
+            val t0 = System.currentTimeMillis()
             val quality = targetQualityLevel()
             val cached = withContext(Dispatchers.IO) {
                 player.hasCompleteCache(song.id, quality, song.sizeBytes) &&
                     player.hasCachedUrl(song.id, quality)
             }
             if (token != playToken) return@launch
+            timingLog("start song=${song.id} cacheCheck=${System.currentTimeMillis() - t0}ms cached=$cached")
             if (cached) {
                 // Avoid resolving a fresh signed URL just to replay a fully cached
                 // song. Media3 reads all bytes from the cache.
@@ -846,7 +850,9 @@ class MusicBridgeImpl(
                 }
                 return@launch
             }
+            val tResolveStart = System.currentTimeMillis()
             val url = withContext(Dispatchers.IO) { resolveUrl(song) }
+            timingLog("start song=${song.id} resolve=${System.currentTimeMillis() - tResolveStart}ms url=${if (url.isNullOrBlank()) "null" else "ok"}")
             if (token != playToken) return@launch
             if (url.isNullOrBlank()) {
                 st.playing = false
@@ -895,7 +901,6 @@ class MusicBridgeImpl(
             if (nextSong != null) {
                 rememberPlayed(nextSong.id)
                 start(nextSong)
-                syncHeartQueue()
                 refillHeartStream()
                 scope.launch(Dispatchers.IO) {
                     heartStream.firstOrNull()?.let { runCatching { prefetchSongCache(it) } }
@@ -936,8 +941,8 @@ class MusicBridgeImpl(
             heartStream.removeFirstOrNull()?.let { first ->
                 rememberPlayed(first.id)
                 start(first)
-                syncHeartQueue()
             }
+            // 只预取心动流的下一首，绝不批量缓存整个池子。
             heartStream.firstOrNull()?.let { next ->
                 withContext(Dispatchers.IO) { runCatching { prefetchSongCache(next) } }
             }
@@ -962,48 +967,22 @@ class MusicBridgeImpl(
         }
     }
 
-    override fun setHeartRatio(value: Float) {
-        st.heartRatio = value.coerceIn(0.2f, 0.6f)
-        // 比例变了，窗口重新生成（当前播放不受影响）。
-        heartStream.clear()
-        scope.launch { fillHeartStream(5) }
-    }
-
-    /** 补窗口：按比例交替取「红心老歌」与「算法推荐」。 */
+    /** 补窗口：完全使用网易云心动推荐（不做本地老歌挑选）。 */
     private suspend fun fillHeartStream(target: Int) {
         while (heartStream.size < target) {
-            val wantRecommend = heartStream.size >= 2 && heartStream.size % 3 == 2
-            val pick = if (wantRecommend) nextRecommended() else nextLikedSong()
-                ?: nextRecommended()
-            if (pick == null) break
+            val pick = nextRecommended() ?: break
             heartStream.addLast(pick)
         }
     }
 
     private fun refillHeartStream() {
         if (!st.heartMode) return
-        scope.launch { fillHeartStream(5); syncHeartQueue() }
+        // 窗口已满就不要每次切歌都起协程/打网络，避免持续的后台活动。
+        if (heartStream.size >= 5) return
+        scope.launch { fillHeartStream(5) }
     }
 
-    /** 把「当前 + 接下来的心动流」写进队列，队列面板与列表标记才有内容。 */
-    private fun syncHeartQueue() {
-        if (!st.heartMode) return
-        val current = st.currentSong ?: return
-        val upcoming = heartStream.toList()
-        st.playQueue = listOf(current) + upcoming
-        st.queueIndex = 0
-    }
-
-    private suspend fun nextLikedSong(): Song? {
-        val liked = runCatching { likedPlaylistSongs() }.getOrDefault(emptyList())
-        if (liked.isEmpty()) return null
-        val filtered = liked.filter { song ->
-            song.id !in recentPlayed &&
-                heartStream.none { it.id == song.id } &&
-                st.currentSong?.id != song.id
-        }
-        return filtered.randomOrNull()
-    }
+    // 心动模式不再改写播放队列：模式进行时禁用队列与播放模式按钮，退出时恢复进入前的快照。
 
     private suspend fun nextRecommended(): Song? {
         val seed = st.currentSong?.id ?: heartStream.lastOrNull()?.id ?: return null
@@ -1030,6 +1009,8 @@ class MusicBridgeImpl(
         if (songs.isNotEmpty()) {
             likedSongsCache = songs
             likedSongsAt = now
+            // 红心状态以云端为准：把这些 id 设为已喜欢，界面心形才是实心。
+            st.likedIds = st.likedIds + songs.map { it.id }
         }
         return likedSongsCache
     }
@@ -1328,6 +1309,16 @@ class MusicBridgeImpl(
             .sortedBy { it.latencyMs }
             .mapNotNull { it.url }
             .distinct()
+    }
+
+    private fun timingLog(line: String) {
+        runCatching {
+            val dir = java.io.File("/sdcard/Android/data/com.asmusic.app/files")
+            dir.mkdirs()
+            java.io.File(dir, "play_timing.txt").appendText(
+                "${System.currentTimeMillis()} $line\n"
+            )
+        }
     }
 
     private fun markScriptQuality(level: String) {

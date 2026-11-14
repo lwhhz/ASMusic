@@ -236,6 +236,18 @@ fun SongDetailPage(
                         .clip(RoundedCornerShape(24.dp))
                 ) {
                     CoverImage(current.coverUrl, current.id, Modifier.fillMaxSize())
+                    if (current.id in state.heartRecommendedIds) {
+                        Box(
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color.Black.copy(alpha = .45f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Txt("心动推荐", AS.caption().copy(fontSize = 10.sp, color = Color.White))
+                        }
+                    }
                 }
                 Spacer(Modifier.height(20.dp))
                 Txt(
@@ -439,12 +451,25 @@ fun SongDetailPage(
                             CoverImage(current.coverUrl, current.id, Modifier.fillMaxSize())
                         }
                         Spacer(Modifier.width(10.dp))
-                        Txt(
-                            current.name,
-                            AS.rowTitle().copy(fontSize = 14.sp),
+                        Row(
                             Modifier.weight(1f),
-                            maxLines = 1
-                        )
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Txt(
+                                current.name,
+                                AS.rowTitle().copy(fontSize = 14.sp),
+                                Modifier.weight(1f, fill = false),
+                                maxLines = 1
+                            )
+                            if (current.id in state.heartRecommendedIds) {
+                                Spacer(Modifier.width(6.dp))
+                                Txt(
+                                    "心动推荐",
+                                    AS.caption().copy(fontSize = 10.sp, color = AS.Blue),
+                                    maxLines = 1
+                                )
+                            }
+                        }
                         PlayPauseButton(playing, ::togglePlay, size = 32.dp, filled = true)
                     }
                 }
@@ -466,7 +491,25 @@ fun SongDetailPage(
                         CoverImage(current.coverUrl, current.id, Modifier.fillMaxSize())
                     }
                     Spacer(Modifier.width(10.dp))
-                    Txt(current.name, AS.rowTitle().copy(fontSize = 14.sp), Modifier.weight(1f), maxLines = 1)
+                    Row(
+                        Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Txt(
+                            current.name,
+                            AS.rowTitle().copy(fontSize = 14.sp),
+                            Modifier.weight(1f, fill = false),
+                            maxLines = 1
+                        )
+                        if (current.id in state.heartRecommendedIds) {
+                            Spacer(Modifier.width(6.dp))
+                            Txt(
+                                "心动推荐",
+                                AS.caption().copy(fontSize = 10.sp, color = AS.Blue),
+                                maxLines = 1
+                            )
+                        }
+                    }
                     PlayPauseButton(playing, ::togglePlay, size = 32.dp, filled = true)
                 }
             }

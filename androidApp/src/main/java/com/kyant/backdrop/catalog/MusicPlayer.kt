@@ -159,11 +159,21 @@ class MusicPlayer(
     fun hasCachedUrl(songId: Long, quality: String): Boolean =
         cacheUrlPrefs.contains(cacheKey(songId, quality))
 
+    /** 冷启动时预热 SimpleCache 索引：首次 isCached 会触发磁盘扫描。 */
+    fun warmCache() {
+        runCatching { audioCache.isCached("__warm__", 0L, 1L) }
+    }
+
     fun hasCompleteCache(songId: Long, quality: String, expectedBytes: Long): Boolean {
-        if (expectedBytes <= 0L) return false
         val key = cacheKey(songId, quality)
         return runCatching {
-            audioCache.isCached(key, 0L, expectedBytes)
+            if (expectedBytes <= 0L) {
+                // 推荐接口经常不带文件大小；此时只要缓存里已有数据就直接播放，
+                // 缺的部分 CacheDataSource 会补，避免每次都重新解析 URL。
+                audioCache.isCached(key, 0L, 1L)
+            } else {
+                audioCache.isCached(key, 0L, expectedBytes)
+            }
         }.getOrDefault(false)
     }
 

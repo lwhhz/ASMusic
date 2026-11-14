@@ -132,6 +132,17 @@ fun MusicApp() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     // Secondary screens live on a small stack: "s:<id>" = song, "p:<id>" = playlist/album.
     var stack by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    // 仅用于性能日志：把当前页面名写进状态，帧监控日志里能看出是哪个页面掉的帧。
+    LaunchedEffect(tab, stack) {
+        state.debugPage = when {
+            stack.lastOrNull()?.startsWith("s:") == true -> "song"
+            stack.lastOrNull()?.startsWith("p:") == true -> "playlist"
+            stack.lastOrNull()?.startsWith("a:") == true -> "album"
+            stack.lastOrNull()?.startsWith("r:") == true -> "artist"
+            else -> listOf("today", "new", "mine", "stats", "search").getOrElse(tab) { "tab" }
+        }
+    }
+
     var accountOpen by remember { mutableStateOf(false) }
     var qrOpen by remember { mutableStateOf(false) }
     var scriptOpen by remember { mutableStateOf(false) }

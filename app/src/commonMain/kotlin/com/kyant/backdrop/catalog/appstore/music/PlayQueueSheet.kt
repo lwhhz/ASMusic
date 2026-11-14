@@ -1,5 +1,6 @@
 package com.kyant.backdrop.catalog.appstore.music
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -47,6 +48,9 @@ fun PlayQueueSheet() {
         animationSpec = spring(dampingRatio = .92f, stiffness = 380f)
     )
     if (progress < .001f) return
+    LaunchedEffect(state.queueSheetOpen) {
+        if (state.queueSheetOpen) bridge.refreshHeartQueue()
+    }
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -125,6 +129,13 @@ fun PlayQueueSheet() {
                                     AS.caption().copy(fontSize = 12.sp),
                                     maxLines = 1
                                 )
+                            }
+                            if (song.id in state.heartRecommendedIds) {
+                                Txt(
+                                    "心动推荐",
+                                    AS.caption().copy(fontSize = 10.sp, color = AS.Blue)
+                                )
+                                Spacer(Modifier.width(8.dp))
                             }
                             if (current) {
                                 Txt(

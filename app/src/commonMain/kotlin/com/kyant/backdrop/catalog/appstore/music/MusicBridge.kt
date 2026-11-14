@@ -92,11 +92,11 @@ class MusicState {
     var posterConfig by mutableStateOf(PosterConfig())
     var amllStaticBg by mutableStateOf(false)
     /** 心动模式进行中（仅本次会话，不持久化）。 */
+    /** 仅用于性能日志的当前页面名。 */
+    var debugPage by mutableStateOf("")
     var heartMode by mutableStateOf(false)
     /** 心动模式是首页卡片进入的：这种没有"关闭"概念。 */
     var heartModeFromHome by mutableStateOf(false)
-    /** 推荐占比：0.2 / 0.4 / 0.6。 */
-    var heartRatio by mutableStateOf(0.4f)
     /** 当前流里来自算法推荐的歌曲 id，用于列表标记。 */
     var heartRecommendedIds by mutableStateOf(setOf<Long>())
     /** 本次会话里红心过的歌曲，用于心形按钮的即时反馈。 */
@@ -298,11 +298,12 @@ interface MusicBridge {
     /** 进入心动模式；[fromHome] 表示从首页卡片进入（无关闭概念）。 */
     fun enterHeartMode(fromHome: Boolean) {}
 
+    /** 队列面板打开时刷新心动流内容。 */
+    fun refreshHeartQueue() {}
+
     /** 退出心动模式并回到进入前的队列位置（首页卡片进入时不提供该操作）。 */
     fun exitHeartMode() {}
 
-    /** 设置推荐占比 20% / 40% / 60%。 */
-    fun setHeartRatio(value: Float) {}
 
     /** 歌手页的专辑列表。 */
     suspend fun artistAlbums(id: Long): List<Playlist> = emptyList()

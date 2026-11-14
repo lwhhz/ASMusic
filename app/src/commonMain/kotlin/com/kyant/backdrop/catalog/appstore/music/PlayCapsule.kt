@@ -339,10 +339,14 @@ private fun ExpandedControls(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val streamOnly = state.heartMode && state.heartModeFromHome
+            val streamOnly = state.heartMode
             CircleIconButton(
-                onClick = { if (!streamOnly) state.queueSheetOpen = true },
-                modifier = if (streamOnly) Modifier.alpha(0.35f) else Modifier
+                // 真正禁用：不挂点击、半透明，避免看起来可点却没反应
+                onClick = {
+                    if (!streamOnly) state.queueSheetOpen = true
+                },
+                modifier = if (streamOnly) Modifier.alpha(0.3f) else Modifier,
+                enabled = !streamOnly
             ) {
                 QueueGlyph(Modifier.size(17.dp))
             }
@@ -355,7 +359,8 @@ private fun ExpandedControls(
                         else Color.White.copy(alpha = .10f)
                     )
                     .then(
-                        if (streamOnly) Modifier
+                        // 首页卡片进入的没有「关闭」概念；其它入口必须能关掉。
+                        if (state.heartMode && state.heartModeFromHome) Modifier
                         else Modifier.tap {
                             if (state.heartMode) bridge.exitHeartMode()
                             else bridge.enterHeartMode(false)
@@ -372,8 +377,11 @@ private fun ExpandedControls(
                 )
             }
             CircleIconButton(
-                onClick = { if (!streamOnly) bridge.setPlayMode(state.playMode.next()) },
-                modifier = if (streamOnly) Modifier.alpha(0.35f) else Modifier
+                onClick = {
+                    if (!streamOnly) bridge.setPlayMode(state.playMode.next())
+                },
+                modifier = if (streamOnly) Modifier.alpha(0.3f) else Modifier,
+                enabled = !streamOnly
             ) {
                 PlayModeGlyph(state.playMode, Modifier.size(17.dp))
             }
@@ -543,6 +551,7 @@ private fun SkipButton(forward: Boolean, onClick: () -> Unit, size: Dp = 34.dp) 
 private fun CircleIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     size: Dp = 34.dp,
     content: @Composable () -> Unit
 ) {
@@ -551,7 +560,7 @@ private fun CircleIconButton(
             .size(size)
             .clip(CircleShape)
             .background(Color.White.copy(alpha = .10f))
-            .tap(onClick),
+            .then(if (enabled) Modifier.tap(onClick) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         content()
