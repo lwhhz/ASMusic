@@ -53,13 +53,6 @@ data class Song(
             val s = total % 60
             return "$m:${if (s < 10) "0" else ""}$s"
         }
-
-    val sizeText: String
-        get() = when {
-            sizeBytes <= 0L -> "—"
-            sizeBytes >= 1_048_576L -> "${(sizeBytes / 104_857.6).toLong() / 10.0} MB"
-            else -> "${sizeBytes / 1024} KB"
-        }
 }
 
 @Immutable

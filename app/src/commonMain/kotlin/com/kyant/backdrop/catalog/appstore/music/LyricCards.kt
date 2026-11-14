@@ -11,15 +11,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.lazy.items
@@ -123,11 +117,6 @@ fun LyricCards(
         }
     }
 
-    val scrollInProgress by remember {
-        kotlinx.coroutines.flow.flowOf(Unit).let {
-            androidx.compose.runtime.derivedStateOf { listState.isScrollInProgress }
-        }
-    }
     LaunchedEffect(currentIndex, userMoved, manualHold, followSuppressed) {
         if (userMoved || manualHold || followSuppressed) return@LaunchedEffect
         // 声明式跟随：算出最近的目标页，交给 LazyRow 自己吸附。

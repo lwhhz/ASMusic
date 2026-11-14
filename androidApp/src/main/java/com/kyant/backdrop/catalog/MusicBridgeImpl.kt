@@ -18,10 +18,6 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
-import java.util.concurrent.Callable
-import java.util.concurrent.CompletionService
-import java.util.concurrent.ExecutorCompletionService
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import com.kyant.backdrop.catalog.appstore.music.AudioQuality
 import com.kyant.backdrop.catalog.appstore.music.CacheInfo
@@ -44,7 +40,6 @@ import com.kyant.backdrop.catalog.appstore.music.Song
 import com.kyant.backdrop.catalog.appstore.music.SongQuality
 import com.kyant.backdrop.catalog.appstore.music.SongStorageInfo
 import com.kyant.backdrop.catalog.appstore.music.snapUiScale
-import com.kyant.backdrop.catalog.appstore.music.SongStream
 import com.kyant.backdrop.catalog.appstore.music.SongSocial
 import com.kyant.backdrop.catalog.appstore.music.UserProfile
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +64,9 @@ class MusicBridgeImpl(
     private val player: MusicPlayer,
     private val openPicker: () -> Unit
 ) : MusicBridge {
+
+    /** 版本号来自构建产物，避免设置页硬编码字符串与实际版本不一致。 */
+    override val appVersion: String get() = BuildConfig.VERSION_NAME
 
     /** Direct mode talks to music.163.com from the phone itself; proxy mode needs a PC service. */
     private val api: MusicApi
@@ -591,7 +589,9 @@ class MusicBridgeImpl(
     }
 
     override suspend fun image(url: String, maxEdge: Int): ImageBitmap? {
-        cache.image(url)?.let { return it }
+        // maxEdge 必须透传：否则列表行请求 128/256 px 也会走 512 的默认档，
+        // 内存里全是同一张图的大尺寸副本。
+        cache.image(url, maxEdge)?.let { return it }
         val bitmap = api.image(url) ?: return null
         return cache.putImage(url, bitmap)
     }
@@ -1317,14 +1317,13 @@ class MusicBridgeImpl(
             .distinct()
     }
 
+    /**
+     * 播放耗时日志。曾经直接 appendText 到 /sdcard（主线程同步写盘，每次切歌 2 次），
+     * 而且 Android 11+ 分区存储下基本写不进去。改为走 Logcat：零 IO，仍然可用
+     * `adb logcat -s ASMusicTiming` 取到同样的信息。
+     */
     private fun timingLog(line: String) {
-        runCatching {
-            val dir = java.io.File("/sdcard/Android/data/com.asmusic.app/files")
-            dir.mkdirs()
-            java.io.File(dir, "play_timing.txt").appendText(
-                "${System.currentTimeMillis()} $line\n"
-            )
-        }
+        android.util.Log.d("ASMusicTiming", line)
     }
 
     private fun markScriptQuality(level: String) {
@@ -1353,7 +1352,9 @@ class MusicBridgeImpl(
     }
 
     private suspend fun prefetch(song: Song) {
-        val lyricKey = "lyric:${song.id}"
+        // 必须和 lyric() 用同一个 key：这里曾写成 "lyric:"，导致预取的歌词永远读不到，
+        // 每次切歌还要多打一次歌词接口。
+        val lyricKey = "lyric2:${song.id}"
         if (cache.read(lyricKey, TTL_WEEK) == null) {
             api.lyric(song.id)?.takeIf { it.isNotEmpty() }
                 ?.let { cache.write(lyricKey, lyricToJson(it)) }

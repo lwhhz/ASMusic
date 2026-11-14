@@ -27,9 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,8 +51,10 @@ fun CoverImage(
     modifier: Modifier = Modifier,
     requestEdge: Int = 512
 ) {
-    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(url) {
+    // requestEdge 也是"要哪一张图"的一部分：同一个 url 从 512 降到 256 时必须重新取，
+    // 否则会一直复用大图（多占内存）而不走缓存里的小图。
+    var bitmap by remember(url, requestEdge) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(url, requestEdge) {
         bitmap = if (url.isNullOrBlank()) null else {
             runCatching { MusicServices.bridge.image(url, requestEdge) }.getOrNull()
         }

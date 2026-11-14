@@ -2,33 +2,19 @@ package com.kyant.backdrop.catalog.appstore.music
 
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
-import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.border
-import com.kyant.shapes.Capsule
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import com.kyant.shapes.RoundedRectangle
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.blur as glassBlur
-import com.kyant.backdrop.drawBackdrop
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,7 +35,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -57,10 +42,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.ScrollState
@@ -232,7 +215,6 @@ private fun HeartModeCard(
 ) {
     val bridge = MusicServices.bridge
     val state = MusicServices.state
-    var menuOpen by remember { mutableStateOf(false) }
     val first = pool.firstOrNull() ?: return
 
     Box(

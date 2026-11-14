@@ -1,14 +1,8 @@
 package com.kyant.backdrop.catalog.appstore.music
 
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.Alignment
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,41 +10,77 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.catalog.appstore.AS
 import com.kyant.backdrop.catalog.appstore.CircleButton
 import com.kyant.backdrop.catalog.appstore.CircleKind
 import com.kyant.backdrop.catalog.appstore.Txt
+import com.kyant.backdrop.catalog.appstore.tap
 import kotlin.math.roundToInt
 
 /** Audio cache presets: 512 MB, then 5 GB steps up to 20 GB. */
 val CacheLimitSteps = listOf(512f, 5120f, 10240f, 15360f, 20480f)
 
-/** Which group of sliders a third-level page shows. */
+/**
+ * Which group of controls a third-level page shows.
+ *
+ * 分组按**用户意图**而不是实现模块划分：同一个功能的所有参数都在同一页，
+ * 因此不再存在「卡片歌词的字号」和「沉浸式歌词的字号」分处两地、也看不到
+ * 「自定义 → 歌词 → 歌词显示参数」这种四层入口。
+ */
 enum class FineTuneGroup(val title: String, val note: String) {
-    Capsule("播放胶囊", "只影响歌曲详情页展开后的全宽控制栏，胶囊形态始终保持。"),
-    Haze("Haze 效果参数", "覆盖高度是模糊区域总高；过渡是顶部完全不透明的高度，之后才逐渐变透明；模糊强度决定最顶端的峰值模糊。"),
-    Lyrics("卡片歌词", "逐字方式、字号与光晕，只作用于歌曲详情页的歌词卡。"),
-    Cache("缓存与预加载", "音频缓存上限、下一首预缓存，以及「缓存好再播放」。"),
-    Poster("分享海报", "歌词海报的背景、比例、行数与水印；修改后下一次分享立即生效。"),
-    Source("歌词源", "逐字歌词的数据来源。TTML 来自 AMLL 公共库；第三方源默认关闭，开启后歌词数据来自对应平台。"),
-    Fluid("沉浸式歌词背景", "长按歌词卡进入沉浸式歌词后生效；背景由当前歌曲封面实时生成。"),
+    Capsule(
+        "播放胶囊",
+        "停靠位置决定胶囊浮在底栏左侧还是右侧；控制栏圆角只影响歌曲详情页展开后的全宽形态，胶囊本身始终是完整的胶囊形。"
+    ),
+    Appearance(
+        "顶栏与详情页",
+        "顶栏是歌曲详情页下滑后浮在最上面的那一层。Haze 直接对页面内容做实时模糊，纯色则用一块纯色顶栏；界面大小同时影响间距与控件尺寸。"
+    ),
+    Lyrics(
+        "卡片歌词",
+        "只作用于歌曲详情页的歌词卡。逐字歌词使用 Compose 原生渲染，关闭后歌词卡使用整行静态文字。"
+    ),
     Immersive(
-        "沉浸式歌词文字",
+        "沉浸式歌词",
         "只作用于 AMLL 沉浸式页面。滑走歌词后会在设定时间后自动回到正在播放的那一行；点击任意一行可跳到该句。"
+    ),
+    Fluid(
+        "沉浸式歌词背景",
+        "进入沉浸式歌词后生效，背景由当前歌曲封面实时生成，不是视频。"
+    ),
+    Source(
+        "歌词源",
+        "逐字歌词的数据来源。TTML 来自 AMLL 公共库；第三方源默认关闭，开启后歌词数据来自对应平台。"
+    ),
+    Cache(
+        "缓存与预加载",
+        "音频缓存上限、下一首预缓存，以及「缓存好再播放」。清理缓存请回到设置里的「缓存管理」。"
+    ),
+    Poster(
+        "分享海报",
+        "歌词海报的背景、比例、行数与水印；修改后下一次分享立即生效。"
     ),
 }
 
 /**
- * Third-level page showing exactly one group of sliders. Reaching sliders requires
- * an explicit navigation step from the owning Customize module, so scrolling the
- * Customize page can never nudge a value by accident.
+ * Third-level page showing exactly one group of controls. Reaching a slider always
+ * requires an explicit navigation step from Settings, so scrolling the list can never
+ * nudge a value by accident.
  */
 @Composable
 fun FineTunePage(
@@ -79,81 +109,182 @@ fun FineTunePage(
         Spacer(Modifier.height(18.dp))
 
         Column(Modifier.padding(horizontal = 16.dp)) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
+            SettingsCard {
                 when (group) {
                     FineTuneGroup.Capsule -> {
-                    // Live preview of the song-detail control bar shape.
-                    val previewCorner = state.capsuleCorner
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(64.dp)
-                            .clip(
-                                if (previewCorner >= .995f) CircleShape
-                                else RoundedCornerShape((previewCorner * 32f).dp)
-                            )
-                            .background(AS.CardElevated)
-                            .padding(horizontal = 18.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // Decorative transport bar: progress line + prev / play / next dots.
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                        CapsuleSideSwitch(state.capsuleOnLeft) { bridge.setCapsuleOnLeft(it) }
+                        Spacer(Modifier.height(10.dp))
+                        Txt(
+                            if (state.capsuleOnLeft) "胶囊停靠在底栏上方左侧，也可以在首页直接左右拖动。"
+                            else "胶囊停靠在底栏上方右侧，也可以在首页直接左右拖动。",
+                            AS.caption()
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        SettingDivider()
+                        // Live preview of the song-detail control bar shape.
+                        val previewCorner = state.capsuleCorner
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 14.dp)
+                                .height(64.dp)
+                                .clip(
+                                    if (previewCorner >= .995f) CircleShape
+                                    else RoundedCornerShape((previewCorner * 32f).dp)
+                                )
+                                .background(AS.CardElevated)
+                                .padding(horizontal = 18.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(Modifier.size(10.dp).clip(CircleShape).background(AS.Text3))
-                            Spacer(Modifier.width(18.dp))
-                            Box(Modifier.size(16.dp).clip(CircleShape).background(AS.Blue))
-                            Spacer(Modifier.width(18.dp))
-                            Box(Modifier.size(10.dp).clip(CircleShape).background(AS.Text3))
+                            // Decorative transport bar: progress line + prev / play / next dots.
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(10.dp).clip(CircleShape).background(AS.Text3))
+                                Spacer(Modifier.width(18.dp))
+                                Box(Modifier.size(16.dp).clip(CircleShape).background(AS.Blue))
+                                Spacer(Modifier.width(18.dp))
+                                Box(Modifier.size(10.dp).clip(CircleShape).background(AS.Text3))
+                            }
                         }
-                    }
                         Spacer(Modifier.height(10.dp))
                         SettingSlider(
                             "详情页控制栏圆角",
-                            state.capsuleCorner,
+                            { state.capsuleCorner },
                             0f..1f,
-                            if (state.capsuleCorner >= .995f) "胶囊"
-                            else "${(state.capsuleCorner * 52f).toInt()} dp"
+                            { if (it >= .995f) "胶囊" else "${(it * 52f).toInt()} dp" }
                         ) { bridge.setCapsuleCorner(it) }
                     }
-                    FineTuneGroup.Haze -> {
-                        SettingSlider(
-                            "模糊覆盖高度",
-                            state.hazeHeightDp,
-                            64f..420f,
-                            "${state.hazeHeightDp.toInt()} dp"
-                        ) { bridge.setHazeHeightDp(it) }
+
+                    FineTuneGroup.Appearance -> {
+                        Txt("顶栏风格", AS.body().copy(fontSize = 15.sp))
+                        Spacer(Modifier.height(8.dp))
+                        DetailTopStyleSwitch(state.detailTopStyle) { bridge.setDetailTopStyle(it) }
+                        Spacer(Modifier.height(8.dp))
+                        Txt(
+                            if (state.detailTopStyle == DetailTopStyle.Solid) {
+                                "纯色：下滑后使用 64dp 的纯色顶栏。下面的模糊参数在切到 Haze 后生效。"
+                            } else {
+                                "Haze 渐进模糊：直接对页面内容做实时模糊，顶部最强，向下逐渐完全透明。"
+                            },
+                            AS.caption()
+                        )
+                        Spacer(Modifier.height(14.dp))
                         SettingDivider()
-                        SettingSlider(
-                            "清晰到模糊的过渡",
-                            state.hazeOpaqueDp,
-                            64f..state.hazeHeightDp.coerceIn(64f, 420f),
-                            "${state.hazeOpaqueDp.toInt()} dp"
-                        ) { bridge.setHazeOpaqueDp(it) }
+                        Spacer(Modifier.height(12.dp))
+                        // 纯色风格下模糊参数不生效，但保留可调：切回 Haze 时立即沿用。
+                        Column(
+                            Modifier.alpha(if (state.detailTopStyle == DetailTopStyle.Solid) .45f else 1f)
+                        ) {
+                            Txt("Haze 预设", AS.body().copy(fontSize = 15.sp))
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val matched = matchedHazePreset(
+                                    state.hazeHeightDp,
+                                    state.hazeOpaqueDp,
+                                    state.hazeBlurDp
+                                )
+                                HazePresets.forEach { preset ->
+                                    val selected = preset.label == matched
+                                    Box(
+                                        Modifier
+                                            .weight(1f)
+                                            .height(40.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (selected) AS.Blue else AS.CardElevated)
+                                            .tap {
+                                                bridge.applyHazePreset(
+                                                    preset.height,
+                                                    preset.opaque,
+                                                    preset.blur
+                                                )
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Txt(
+                                            preset.label,
+                                            AS.body().copy(
+                                                fontSize = 14.sp,
+                                                color = if (selected) Color.White else AS.Text2
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Txt("选预设后仍可继续手动微调。", AS.caption())
+                            Spacer(Modifier.height(10.dp))
+                            SettingDivider()
+                            SettingSlider(
+                                "模糊覆盖高度",
+                                { state.hazeHeightDp },
+                                64f..420f,
+                                { "${it.toInt()} dp" }
+                            ) { bridge.setHazeHeightDp(it) }
+                            SettingDivider()
+                            SettingSlider(
+                                "清晰到模糊的过渡",
+                                { state.hazeOpaqueDp },
+                                64f..state.hazeHeightDp.coerceIn(64f, 420f),
+                                { "${it.toInt()} dp" }
+                            ) { bridge.setHazeOpaqueDp(it) }
+                            SettingDivider()
+                            SettingSlider(
+                                "最终模糊强度",
+                                { state.hazeBlurDp },
+                                0f..140f,
+                                { "${it.toInt()} dp" }
+                            ) { bridge.setHazeBlurDp(it) }
+                            SettingDivider()
+                            SettingSlider(
+                                "暗色渐变强度",
+                                { state.hazeScrim },
+                                0f..1f,
+                                { "${(it * 100).toInt()}%" }
+                            ) { bridge.setHazeScrim(it) }
+                        }
+                        Spacer(Modifier.height(14.dp))
                         SettingDivider()
-                        SettingSlider(
-                            "最终模糊强度",
-                            state.hazeBlurDp,
-                            0f..140f,
-                            "${state.hazeBlurDp.toInt()} dp"
-                        ) { bridge.setHazeBlurDp(it) }
+                        SettingSwitchRow(
+                            "歌曲详情页隐藏底栏",
+                            "进入歌曲详情页时隐藏底部标签栏，返回后自动恢复",
+                            state.detailHideTabs
+                        ) { bridge.setDetailHideTabs(it) }
                         SettingDivider()
-                        SettingSlider(
-                            "暗色渐变强度",
-                            state.hazeScrim,
-                            0f..1f,
-                            "${(state.hazeScrim * 100).toInt()}%"
-                        ) { bridge.setHazeScrim(it) }
+                        SettingStepSlider(
+                            "界面大小",
+                            { state.uiScale },
+                            UiScaleSteps,
+                            { "${(it * 100).toInt()}%" }
+                        ) { bridge.setUiScale(it) }
+                        Spacer(Modifier.height(6.dp))
+                        Txt(
+                            "界面大小分八级预设，同时影响间距与控件尺寸。歌词卡片与沉浸式歌词不受影响，它们使用专属的字号设置。",
+                            AS.caption()
+                        )
                     }
+
                     FineTuneGroup.Lyrics -> {
+                        SettingSwitchRow(
+                            "逐字歌词（卡拉OK）",
+                            "有网易云 yrc 时按真实字时间高亮，没有则按整行时长均分",
+                            state.wordByWord
+                        ) { bridge.setWordByWord(it) }
+                        SettingDivider()
+                        SettingSwitchRow(
+                            "显示翻译",
+                            "歌词带中文翻译时显示在原文下方",
+                            state.showTranslation
+                        ) { bridge.setShowTranslation(it) }
+                        SettingDivider()
+                        SettingSwitchRow(
+                            "卡片流光",
+                            "让歌词卡片的取色背景缓慢流动",
+                            state.lyricFlow
+                        ) { bridge.setLyricFlow(it) }
+                        SettingDivider()
                         SettingSwitchRow(
                             "估算逐字",
                             "没有词级时间轴时，按行时长均分到每个字",
@@ -168,60 +299,26 @@ fun FineTunePage(
                         SettingDivider()
                         SettingSlider(
                             "模糊 / 光晕强度",
-                            state.lyricGlow,
+                            { state.lyricGlow },
                             0f..1f,
-                            "${(state.lyricGlow * 100).toInt()}%"
+                            { "${(it * 100).toInt()}%" }
                         ) { bridge.setLyricGlow(it) }
                         SettingDivider()
                         SettingSlider(
                             "歌词字号",
-                            state.lyricFont,
+                            { state.lyricFont },
                             16f..34f,
-                            "${state.lyricFont.toInt()} sp"
+                            { "${it.toInt()} sp" }
                         ) { bridge.setLyricFont(it) }
                         SettingDivider()
                         SettingSlider(
                             "翻译字号",
-                            state.translationFont,
+                            { state.translationFont },
                             10f..24f,
-                            "${state.translationFont.toInt()} sp"
+                            { "${it.toInt()} sp" }
                         ) { bridge.setTranslationFont(it) }
                     }
-                    FineTuneGroup.Fluid -> {
-                        SettingSwitchRow(
-                            "静态背景",
-                            "用当前封面居中裁切+模糊替代流体背景，明显更省电",
-                            state.amllStaticBg
-                        ) { bridge.setAmllStaticBg(it) }
-                        SettingDivider()
-                        SettingSlider(
-                            "模糊强度",
-                            state.fluidBlurDp,
-                            0f..64f,
-                            "${state.fluidBlurDp.toInt()} dp"
-                        ) { bridge.setFluidBlurDp(it) }
-                        SettingDivider()
-                        SettingSlider(
-                            "流体形变",
-                            state.fluidWarp,
-                            0f..3f,
-                            "${(state.fluidWarp * 100).toInt()}%"
-                        ) { bridge.setFluidWarp(it) }
-                        SettingDivider()
-                        SettingSlider(
-                            "流动速度",
-                            state.fluidSpeed,
-                            0.1f..3f,
-                            "${(state.fluidSpeed * 100).toInt()}%"
-                        ) { bridge.setFluidSpeed(it) }
-                        SettingDivider()
-                        SettingSlider(
-                            "暗角强度",
-                            state.fluidDark,
-                            0f..1f,
-                            "${(state.fluidDark * 100).toInt()}%"
-                        ) { bridge.setFluidDark(it) }
-                    }
+
                     FineTuneGroup.Immersive -> {
                         val importFont = rememberFontImport { bridge.setAmllFontFile(it) }
                         SettingSwitchRow(
@@ -232,16 +329,16 @@ fun FineTunePage(
                         SettingDivider()
                         SettingSlider(
                             "歌词字号",
-                            state.amllFontSize,
+                            { state.amllFontSize },
                             20f..64f,
-                            "${state.amllFontSize.toInt()} px"
+                            { "${it.toInt()} px" }
                         ) { bridge.setAmllFontSize(it) }
                         SettingDivider()
                         SettingSlider(
                             "字重",
-                            state.amllFontWeight,
+                            { state.amllFontWeight },
                             300f..900f,
-                            "${state.amllFontWeight.toInt()}"
+                            { "${it.toInt()}" }
                         ) { bridge.setAmllFontWeight(it) }
                         SettingDivider()
                         val availableFamilies = rememberAvailableFontFamilies()
@@ -262,95 +359,48 @@ fun FineTunePage(
                         SettingDivider()
                         SettingSlider(
                             "滑走后自动归位",
-                            state.amllResumeDelay,
+                            { state.amllResumeDelay },
                             0f..10f,
-                            if (state.amllResumeDelay < .05f) "立即"
-                            else "${state.amllResumeDelay.toInt()} s"
+                            { if (it < .05f) "立即" else "${it.toInt()} s" }
                         ) { bridge.setAmllResumeDelay(it) }
                     }
-                    FineTuneGroup.Poster -> {
-                        val cfg = state.posterConfig
-                        SettingStepSlider(
-                            "背景样式",
-                            cfg.bg.ordinal.toFloat(),
-                            listOf(0f, 1f, 2f),
-                            when (cfg.bg) {
-                                PosterBg.Blur -> "模糊封面"
-                                PosterBg.Gradient -> "流光渐变"
-                                PosterBg.Solid -> "纯色"
-                            }
-                        ) { bridge.setPosterConfig(cfg.copy(bg = PosterBg.entries[it.roundToInt().coerceIn(0, 2)])) }
+
+                    FineTuneGroup.Fluid -> {
+                        SettingSwitchRow(
+                            "静态背景",
+                            "用当前封面居中裁切+模糊替代流体背景，明显更省电",
+                            state.amllStaticBg
+                        ) { bridge.setAmllStaticBg(it) }
                         SettingDivider()
-                        SettingStepSlider(
+                        SettingSlider(
                             "模糊强度",
-                            cfg.blurLevel.toFloat(),
-                            listOf(1f, 2f, 3f),
-                            when (cfg.blurLevel) { 1 -> "轻微"; 3 -> "重度"; else -> "标准" }
-                        ) { bridge.setPosterConfig(cfg.copy(blurLevel = it.roundToInt().coerceIn(1, 3))) }
+                            { state.fluidBlurDp },
+                            0f..64f,
+                            { "${it.toInt()} dp" }
+                        ) { bridge.setFluidBlurDp(it) }
                         SettingDivider()
-                        SettingStepSlider(
-                            "比例",
-                            cfg.ratio.ordinal.toFloat(),
-                            listOf(0f, 1f, 2f),
-                            cfg.ratio.label
-                        ) { bridge.setPosterConfig(cfg.copy(ratio = PosterRatio.entries[it.roundToInt().coerceIn(0, 2)])) }
+                        SettingSlider(
+                            "流体形变",
+                            { state.fluidWarp },
+                            0f..3f,
+                            { "${(it * 100).toInt()}%" }
+                        ) { bridge.setFluidWarp(it) }
                         SettingDivider()
-                        SettingStepSlider(
-                            "歌词行数",
-                            cfg.lyricLines.toFloat(),
-                            listOf(1f, 2f, 4f),
-                            "${cfg.lyricLines} 行"
-                        ) { bridge.setPosterConfig(cfg.copy(lyricLines = it.roundToInt().coerceIn(1, 4))) }
+                        SettingSlider(
+                            "流动速度",
+                            { state.fluidSpeed },
+                            0.1f..3f,
+                            { "${(it * 100).toInt()}%" }
+                        ) { bridge.setFluidSpeed(it) }
                         SettingDivider()
-                        SettingStepSlider(
-                            "歌词字号",
-                            cfg.fontScale,
-                            listOf(0.85f, 1f, 1.15f),
-                            "${(cfg.fontScale * 100).toInt()}%"
-                        ) { bridge.setPosterConfig(cfg.copy(fontScale = it)) }
-                        SettingDivider()
-                        SettingSwitchRow("显示翻译", "歌词下方附上翻译", cfg.showTranslation) {
-                            bridge.setPosterConfig(cfg.copy(showTranslation = it))
-                        }
-                        SettingDivider()
-                        SettingSwitchRow("显示歌曲信息卡", "底部封面 + 歌名 + 歌手卡片", cfg.showInfoCard) {
-                            bridge.setPosterConfig(cfg.copy(showInfoCard = it))
-                        }
-                        SettingDivider()
-                        SettingSwitchRow("显示头像与昵称", "右上角账号信息", cfg.showAvatar) {
-                            bridge.setPosterConfig(cfg.copy(showAvatar = it))
-                        }
-                        SettingDivider()
-                        SettingSwitchRow("显示专辑名", "信息卡内第三行", cfg.showAlbum) {
-                            bridge.setPosterConfig(cfg.copy(showAlbum = it))
-                        }
-                        SettingDivider()
-                        SettingTextFieldRow(
-                            "水印文案",
-                            cfg.watermark,
-                            "留空则不显示水印"
-                        ) { bridge.setPosterConfig(cfg.copy(watermark = it)) }
+                        SettingSlider(
+                            "暗角强度",
+                            { state.fluidDark },
+                            0f..1f,
+                            { "${(it * 100).toInt()}%" }
+                        ) { bridge.setFluidDark(it) }
                     }
-                    FineTuneGroup.Cache -> {
-                        SettingStepSlider(
-                            "音频缓存上限",
-                            state.audioCacheLimitMb.toFloat(),
-                            CacheLimitSteps,
-                            formatBytes(state.audioCacheLimitMb.toLong() * 1024L * 1024L)
-                        ) { bridge.setAudioCacheLimitMb(it.roundToInt()) }
-                        SettingDivider()
-                        SettingSwitchRow(
-                            "缓存下一首",
-                            "播放时后台把下一首下完",
-                            state.prefetchNext
-                        ) { bridge.setPrefetchNext(it) }
-                        SettingDivider()
-                        SettingSwitchRow(
-                            "缓存好再播放",
-                            "先下完再播；网速慢时首播会等几秒，但不跳进度",
-                            state.waitForCache
-                        ) { bridge.setWaitForCache(it) }
-                    }
+
                     FineTuneGroup.Source -> {
                         SettingSwitchRow(
                             "TTML 逐字歌词",
@@ -375,6 +425,93 @@ fun FineTunePage(
                                 "歌词数据版权归酷狗及权利人所有，本项目不分发该数据；如不同意请保持关闭。",
                             AS.caption()
                         )
+                    }
+
+                    FineTuneGroup.Cache -> {
+                        SettingStepSlider(
+                            "音频缓存上限",
+                            { state.audioCacheLimitMb.toFloat() },
+                            CacheLimitSteps,
+                            { formatBytes(it.toLong() * 1024L * 1024L) }
+                        ) { bridge.setAudioCacheLimitMb(it.roundToInt()) }
+                        SettingDivider()
+                        SettingSwitchRow(
+                            "缓存下一首",
+                            "播放时后台把下一首下完",
+                            state.prefetchNext
+                        ) { bridge.setPrefetchNext(it) }
+                        SettingDivider()
+                        SettingSwitchRow(
+                            "缓存好再播放",
+                            "先下完再播；网速慢时首播会等几秒，但不跳进度",
+                            state.waitForCache
+                        ) { bridge.setWaitForCache(it) }
+                    }
+
+                    FineTuneGroup.Poster -> {
+                        val cfg = state.posterConfig
+                        SettingStepSlider(
+                            "背景样式",
+                            { cfg.bg.ordinal.toFloat() },
+                            listOf(0f, 1f, 2f),
+                            {
+                                when (it.roundToInt()) {
+                                    0 -> "模糊封面"
+                                    1 -> "流光渐变"
+                                    else -> "纯色"
+                                }
+                            }
+                        ) { bridge.setPosterConfig(cfg.copy(bg = PosterBg.entries[it.roundToInt().coerceIn(0, 2)])) }
+                        SettingDivider()
+                        SettingStepSlider(
+                            "模糊强度",
+                            { cfg.blurLevel.toFloat() },
+                            listOf(1f, 2f, 3f),
+                            { if (it.roundToInt() == 1) "轻微" else if (it.roundToInt() == 3) "重度" else "标准" }
+                        ) { bridge.setPosterConfig(cfg.copy(blurLevel = it.roundToInt().coerceIn(1, 3))) }
+                        SettingDivider()
+                        SettingStepSlider(
+                            "比例",
+                            { cfg.ratio.ordinal.toFloat() },
+                            listOf(0f, 1f, 2f),
+                            { PosterRatio.entries[it.roundToInt().coerceIn(0, 2)].label }
+                        ) { bridge.setPosterConfig(cfg.copy(ratio = PosterRatio.entries[it.roundToInt().coerceIn(0, 2)])) }
+                        SettingDivider()
+                        SettingStepSlider(
+                            "歌词行数",
+                            { cfg.lyricLines.toFloat() },
+                            listOf(1f, 2f, 4f),
+                            { "${it.roundToInt()} 行" }
+                        ) { bridge.setPosterConfig(cfg.copy(lyricLines = it.roundToInt().coerceIn(1, 4))) }
+                        SettingDivider()
+                        SettingStepSlider(
+                            "歌词字号",
+                            { cfg.fontScale },
+                            listOf(0.85f, 1f, 1.15f),
+                            { "${(it * 100).toInt()}%" }
+                        ) { bridge.setPosterConfig(cfg.copy(fontScale = it)) }
+                        SettingDivider()
+                        SettingSwitchRow("显示翻译", "歌词下方附上翻译", cfg.showTranslation) {
+                            bridge.setPosterConfig(cfg.copy(showTranslation = it))
+                        }
+                        SettingDivider()
+                        SettingSwitchRow("显示歌曲信息卡", "底部封面 + 歌名 + 歌手卡片", cfg.showInfoCard) {
+                            bridge.setPosterConfig(cfg.copy(showInfoCard = it))
+                        }
+                        SettingDivider()
+                        SettingSwitchRow("显示头像与昵称", "右上角账号信息", cfg.showAvatar) {
+                            bridge.setPosterConfig(cfg.copy(showAvatar = it))
+                        }
+                        SettingDivider()
+                        SettingSwitchRow("显示专辑名", "信息卡内第三行", cfg.showAlbum) {
+                            bridge.setPosterConfig(cfg.copy(showAlbum = it))
+                        }
+                        SettingDivider()
+                        SettingTextFieldRow(
+                            "水印文案",
+                            cfg.watermark,
+                            "留空则不显示水印"
+                        ) { bridge.setPosterConfig(cfg.copy(watermark = it)) }
                     }
                 }
             }

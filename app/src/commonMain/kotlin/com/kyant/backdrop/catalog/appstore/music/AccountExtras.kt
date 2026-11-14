@@ -5,9 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -22,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -56,13 +53,12 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.catalog.appstore.AS
-import com.kyant.backdrop.catalog.appstore.CircleButton
 import com.kyant.backdrop.catalog.appstore.ChevronRight
-import com.kyant.backdrop.catalog.appstore.CircleKind
 import com.kyant.backdrop.catalog.appstore.Txt
 import com.kyant.backdrop.catalog.appstore.tap
 import com.kyant.backdrop.Backdrop
@@ -223,9 +219,10 @@ fun QrLoginSheet(visible: Boolean, onDismiss: () -> Unit) {
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (qr != null) {
+            val bitmap = qr
+            if (bitmap != null) {
                 Image(
-                    qr!!, null,
+                    bitmap, null,
                     Modifier
                         .size(220.dp)
                         .clip(RoundedCornerShape(12.dp))
@@ -750,8 +747,14 @@ private fun CacheRow(label: String, value: String) {
 // ---------------------------------------------------------------------------
 
 @Composable
-fun AlbumIntroSheet(visible: Boolean, title: String, text: String, onDismiss: () -> Unit) {
-    OverlaySheetScaffold(visible, "专辑简介", onDismiss) {
+fun AlbumIntroSheet(
+    visible: Boolean,
+    title: String,
+    text: String,
+    heading: String = "专辑简介",
+    onDismiss: () -> Unit
+) {
+    OverlaySheetScaffold(visible, heading, onDismiss) {
         Txt(title, AS.sectionTitle(), maxLines = 2)
         Spacer(Modifier.height(6.dp))
         Txt("来源：网易云音乐", AS.caption())
@@ -813,9 +816,9 @@ fun GoalSheet(visible: Boolean, onDismiss: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Txt("分钟", AS.subtitle())
         }
-        if (error != null) {
+        error?.let { message ->
             Spacer(Modifier.height(8.dp))
-            Txt(error!!, AS.caption().copy(color = AS.Orange))
+            Txt(message, AS.caption().copy(color = AS.Orange))
         }
 
         Spacer(Modifier.height(12.dp))
@@ -847,234 +850,29 @@ fun GoalSheet(visible: Boolean, onDismiss: () -> Unit) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Customize (playback capsule side)
-// ---------------------------------------------------------------------------
-
-/**
- * Customization page. It is a normal secondary page (not a sheet) on purpose: the
- * playback capsule stays visible at the bottom, so moving it left/right can be seen
- * live while the switch is flipped.
- */
-@Composable
-fun CustomizePage(
-    scrollState: ScrollState,
-    onBack: () -> Unit,
-    onOpenFineTune: (FineTuneGroup) -> Unit = {}
-) {
-    val bridge = MusicServices.bridge
-    val state = MusicServices.state
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(AS.Bg)
-            .verticalScroll(scrollState)
-            .padding(bottom = 180.dp)
-    ) {
-        Row(Modifier.fillMaxWidth().padding(16.dp)) {
-            CircleButton(CircleKind.Back, onBack)
-        }
-        Txt("自定义", AS.largeTitle().copy(fontSize = 30.sp), Modifier.padding(horizontal = 16.dp))
-        Spacer(Modifier.height(18.dp))
-
-        Column(Modifier.padding(horizontal = 16.dp)) {
-            Txt("播放", AS.caption().copy(color = AS.Text3))
-            Spacer(Modifier.height(8.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(12.dp)
-            ) {
-                CapsuleSideSwitch(state.capsuleOnLeft) { bridge.setCapsuleOnLeft(it) }
-                Spacer(Modifier.height(10.dp))
-                Txt(
-                    if (state.capsuleOnLeft) "胶囊停靠在底栏上方左侧。"
-                    else "胶囊停靠在底栏上方右侧。",
-                    AS.caption()
-                )
-                Spacer(Modifier.height(14.dp))
-                SettingDivider()
-            }
-            Spacer(Modifier.height(12.dp))
-            Txt(
-                "播放胶囊在一级页面停靠在底栏上方，可左右拖动或用开关切换停靠边，松手后自动吸附到较近的一侧；" +
-                    "进入歌曲详情页后展开为全宽播放控制栏，上面的滑块只调整控制栏的圆角，不影响胶囊形态。" +
-                    "切换与拖动均使用带轻微回弹的弹簧动画。",
-                AS.caption()
-            )
-
-
-            Spacer(Modifier.height(22.dp))
-            Txt("外观 · 详情页", AS.caption().copy(color = AS.Text3))
-            Spacer(Modifier.height(8.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(12.dp)
-            ) {
-                Txt("顶栏风格", AS.body())
-                Spacer(Modifier.height(8.dp))
-                DetailTopStyleSwitch(state.detailTopStyle) { bridge.setDetailTopStyle(it) }
-                Spacer(Modifier.height(8.dp))
-                Txt(
-                    if (state.detailTopStyle == DetailTopStyle.Solid) {
-                        "纯色：下滑后使用 64dp 的纯色顶栏。"
-                    } else {
-                        "Haze 渐进模糊：直接对页面内容做实时模糊，顶部最强，向下逐渐完全透明。"
-                    },
-                    AS.caption()
-                )
-                if (state.detailTopStyle == DetailTopStyle.GradientBlur) {
-                    Spacer(Modifier.height(14.dp))
-                    SettingDivider()
-                    Spacer(Modifier.height(12.dp))
-                    Txt("预设", AS.body().copy(fontSize = 15.sp))
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val matched = matchedHazePreset(
-                            state.hazeHeightDp,
-                            state.hazeOpaqueDp,
-                            state.hazeBlurDp
-                        )
-                        HazePresets.forEach { preset ->
-                            val selected = preset.label == matched
-                            Box(
-                                Modifier
-                                    .weight(1f)
-                                    .height(40.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (selected) AS.Blue else AS.CardElevated)
-                                    .tap {
-                                        bridge.applyHazePreset(preset.height, preset.opaque, preset.blur)
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Txt(
-                                    preset.label,
-                                    AS.body().copy(
-                                        fontSize = 14.sp,
-                                        color = if (selected) Color.White else AS.Text2
-                                    )
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Txt("选预设后仍可继续手动微调。", AS.caption())
-                    Spacer(Modifier.height(12.dp))
-                    SettingDivider()
-                    SettingValueLink(
-                        "Haze 效果参数",
-                        "${state.hazeHeightDp.toInt()} / ${state.hazeOpaqueDp.toInt()} / ${state.hazeBlurDp.toInt()} dp"
-                    ) { onOpenFineTune(FineTuneGroup.Haze) }
-                }
-                Spacer(Modifier.height(14.dp))
-                SettingDivider()
-                SettingSwitchRow(
-                    "歌曲详情页隐藏底栏",
-                    "进入歌曲详情页时隐藏底部标签栏，返回后自动恢复",
-                    state.detailHideTabs
-                ) { bridge.setDetailHideTabs(it) }
-            }
-
-            Spacer(Modifier.height(22.dp))
-            Txt("外观 · 界面大小", AS.caption().copy(color = AS.Text3))
-            Spacer(Modifier.height(8.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                SettingStepSlider(
-                    "界面大小",
-                    state.uiScale,
-                    UiScaleSteps,
-                    "${(state.uiScale * 100).toInt()}%"
-                ) { bridge.setUiScale(it) }
-            }
-            Spacer(Modifier.height(10.dp))
-            Txt(
-                "界面大小分八级预设，同时影响间距与控件尺寸。歌词卡片与沉浸式歌词不受影响，" +
-                    "它们使用专属的字号设置。",
-                AS.caption()
-            )
-
-            Spacer(Modifier.height(22.dp))
-            Txt("歌词显示", AS.caption().copy(color = AS.Text3))
-            Spacer(Modifier.height(8.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AS.Card)
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                SettingSwitchRow(
-                    "逐字歌词（卡拉OK）",
-                    "有网易云 yrc 时按真实字时间高亮，没有则按整行时长均分",
-                    state.wordByWord
-                ) { bridge.setWordByWord(it) }
-                SettingDivider()
-                SettingSwitchRow(
-                    "显示翻译",
-                    "歌词带中文翻译时显示在原文下方",
-                    state.showTranslation
-                ) { bridge.setShowTranslation(it) }
-                SettingDivider()
-                SettingSwitchRow(
-                    "卡片流光",
-                    "让歌词卡片的取色背景缓慢流动",
-                    state.lyricFlow
-                ) { bridge.setLyricFlow(it) }
-            }
-            Spacer(Modifier.height(10.dp))
-            Txt(
-                "逐字歌词使用 Compose 原生渲染，只保留逐字高亮与非当前歌词模糊；关闭后歌词卡使用整行静态文字。",
-                AS.caption()
-            )
-
-            Spacer(Modifier.height(10.dp))
-            Txt(
-                "长按歌词卡进入沉浸式歌词后生效；背景由当前歌曲封面实时生成，不是视频。",
-                AS.caption()
-            )
-
-        }
-    }
-}
-
 @Composable
 internal fun SettingDivider() {
     Box(Modifier.padding(start = 2.dp).fillMaxWidth().height(1.dp).background(AS.Separator))
 }
 
-
-/** Tappable label/value row used to jump from Customize into the Fine-tune page. */
+/**
+ * 设置项所在的卡片容器：圆角 14、卡片底色，横向留白由内容自己决定。
+ * 统一在这里是为了改一次圆角／底色就能覆盖全部设置页。
+ */
 @Composable
-internal fun SettingValueLink(
-    title: String,
-    value: String,
-    onClick: () -> Unit
+internal fun SettingsCard(
+    horizontal: Dp = 12.dp,
+    vertical: Dp = 4.dp,
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
-            .tap(onClick)
-            .padding(vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Txt(title, AS.body().copy(fontSize = 15.sp), Modifier.weight(1f))
-        Txt(value, AS.subtitle().copy(fontSize = 13.sp))
-        Spacer(Modifier.width(6.dp))
-        ChevronRight(size = 12.dp)
-    }
+            .clip(RoundedCornerShape(14.dp))
+            .background(AS.Card)
+            .padding(horizontal = horizontal, vertical = vertical),
+        content = content
+    )
 }
 
 @Composable
@@ -1116,12 +914,19 @@ internal fun SettingSwitchRow(
     }
 }
 
+/**
+ * 预设档位滑块。
+ *
+ * [value] / [display] 都是 lambda：设置页里这些值来自 [MusicState]，如果在调用处直接
+ * 求值，拖动一次滑块会让整个三级页（几十个节点）每帧重组。传 lambda 后读取发生在
+ * 本函数内部，重组范围收敛到这一行。
+ */
 @Composable
 internal fun SettingStepSlider(
     label: String,
-    value: Float,
+    value: () -> Float,
     steps: List<Float>,
-    display: String,
+    display: (Float) -> String,
     onChange: (Float) -> Unit
 ) {
     val backdrop = rememberCardBackdrop()
@@ -1129,11 +934,11 @@ internal fun SettingStepSlider(
     fun presetIndex(v: Float): Int = steps.indices.minByOrNull { abs(steps[it] - v) } ?: 0
     // Same idea as the reference project's 纸色 slider: the thumb follows the finger
     // freely and only snaps to the nearest preset when the finger lifts.
-    var position by remember { mutableFloatStateOf(presetIndex(value).toFloat()) }
+    var position by remember { mutableFloatStateOf(presetIndex(value()).toFloat()) }
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Txt(label, AS.body().copy(fontSize = 15.sp), Modifier.weight(1f))
-            Txt(display, AS.subtitle().copy(fontSize = 13.sp))
+            Txt(display(value()), AS.subtitle().copy(fontSize = 13.sp))
         }
         Spacer(Modifier.height(6.dp))
         LiquidSlider(
@@ -1155,24 +960,24 @@ internal fun SettingStepSlider(
     }
 }
 
+/** 连续滑块，[value] / [display] 为 lambda 的原因同 [SettingStepSlider]。 */
 @Composable
 internal fun SettingSlider(
     label: String,
-    value: Float,
+    value: () -> Float,
     range: ClosedFloatingPointRange<Float>,
-    display: String,
+    display: (Float) -> String,
     onChange: (Float) -> Unit
 ) {
     val backdrop = rememberCardBackdrop()
-    val currentValue = rememberUpdatedState(value)
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Txt(label, AS.body().copy(fontSize = 15.sp), Modifier.weight(1f))
-            Txt(display, AS.subtitle().copy(fontSize = 13.sp))
+            Txt(display(value()), AS.subtitle().copy(fontSize = 13.sp))
         }
         Spacer(Modifier.height(6.dp))
         LiquidSlider(
-            value = { currentValue.value },
+            value = value,
             onValueChange = onChange,
             valueRange = range,
             visibilityThreshold = ((range.endInclusive - range.start) / 1000f).coerceAtLeast(1e-4f),
@@ -1300,7 +1105,7 @@ internal fun SettingTextFieldRow(
 }
 
 @Composable
-private fun CapsuleSideSwitch(onLeft: Boolean, onChange: (Boolean) -> Unit) {
+internal fun CapsuleSideSwitch(onLeft: Boolean, onChange: (Boolean) -> Unit) {
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
@@ -1351,7 +1156,7 @@ private fun CapsuleSideSwitch(onLeft: Boolean, onChange: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun DetailTopStyleSwitch(
+internal fun DetailTopStyleSwitch(
     selected: DetailTopStyle,
     onChange: (DetailTopStyle) -> Unit
 ) {

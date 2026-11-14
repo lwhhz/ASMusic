@@ -33,8 +33,6 @@ class MusicState {
     var queueIndex by mutableStateOf(0)
     /** Playback order (顺序 / 循环 / 单曲 / 随机). */
     var playMode by mutableStateOf(PlayMode.LoopAll)
-    /** UI-only: the play-queue bottom sheet is open. */
-    var queueSheetOpen by mutableStateOf(false)
     /**
      * Corner radius of the capsule **on the song detail page** (its expanded
      * full-width form). 1 = full capsule; 0..~0.99 = rounded rectangle.
@@ -48,7 +46,6 @@ class MusicState {
     var availableQualities by mutableStateOf<List<SongQuality>>(emptyList())
     /** Effective quality of the stream currently being resolved. */
     var currentQuality by mutableStateOf<SongQuality?>(null)
-    var qualitySheetOpen by mutableStateOf(false)
     /** Ceiling picked in settings; the per-song button overrides it for this session. */
     var wifiQuality by mutableStateOf("lossless")
     var mobileQuality by mutableStateOf("exhigh")
@@ -135,6 +132,9 @@ class MusicState {
  */
 interface MusicBridge {
     val state: MusicState get() = MusicServices.state
+
+    /** 应用版本名（设置页显示）。平台未提供时为空字符串。 */
+    val appVersion: String get() = ""
 
     // ---- catalogue ----
     suspend fun search(q: String): SearchResults = Fixtures.search(q)
@@ -278,7 +278,10 @@ interface MusicBridge {
     fun setLyricFont(value: Float) { state.lyricFont = value.coerceIn(16f, 34f) }
     fun setAmllFontSize(value: Float) { state.amllFontSize = value.coerceIn(20f, 64f) }
     fun setAmllFontWeight(value: Float) { state.amllFontWeight = value.coerceIn(300f, 900f) }
-    fun setAmllFontFamily(value: Int) { state.amllFontFamily = value.coerceIn(0, 4) }
+    // 索引与 SystemFontLabels / FontAvailability 的 FAMILY_NAMES 一一对应（共 8 项：
+    // 默认 / 细体 / 紧缩 / 中黑 / 衬线 / 等宽 / 手写 / 圆润）。
+    // 这里曾把上限写成 4，导致后三项被静默截断到「衬线」而永远选不中。
+    fun setAmllFontFamily(value: Int) { state.amllFontFamily = value.coerceIn(0, 7) }
     fun setAmllTtmlEnabled(value: Boolean) { state.amllTtmlEnabled = value }
     fun setAmllTtmlSource(value: String) {
         state.amllTtmlSource = value.ifBlank { "https://amlldb.bikonoo.com/%p/%s.ttml" }

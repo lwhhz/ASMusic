@@ -7,7 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,11 +38,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.catalog.appstore.music.MusicServices
@@ -50,16 +48,21 @@ import com.kyant.backdrop.catalog.appstore.music.SelfCheckItem
 import kotlinx.coroutines.launch
 import com.kyant.backdrop.catalog.appstore.music.formatBytes
 
-/** Account & settings sheet. Everything App-Store-specific has been removed. */
+/**
+ * 设置：按「用户意图」分成七组，每个功能只有一处入口。
+ *
+ * 页面本身只是一个列表：所有子页都是同一个导航栈里的下一层，返回即出栈，
+ * 因此从任何一项进子页再返回，都会回到这一页（并保留滚动位置）。
+ */
 @Composable
 fun SettingsSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
+    scrollState: ScrollState = rememberScrollState(),
     onNeteaseLogin: () -> Unit = {},
     onLogout: () -> Unit = {},
     onScriptImport: () -> Unit = {},
     onCache: () -> Unit = {},
-    onCustomize: () -> Unit = {},
     onQuality: () -> Unit = {},
     onOpenFineTune: (com.kyant.backdrop.catalog.appstore.music.FineTuneGroup) -> Unit = {},
     modifier: Modifier = Modifier
@@ -94,12 +97,6 @@ fun SettingsSheet(
                 .getOrDefault(state.cacheInfo)
         }
     }
-    val pulse = rememberInfiniteTransition(label = "background-permission").animateFloat(
-        initialValue = 0.15f,
-        targetValue = 0.55f,
-        animationSpec = infiniteRepeatable(tween(720), RepeatMode.Reverse),
-        label = "background-pulse"
-    )
     if (progress < 0.001f) return
 
     Box(modifier.fillMaxSize()) {
@@ -118,7 +115,7 @@ fun SettingsSheet(
                 .offset { IntOffset(0, ((1f - progress) * 900.dp.toPx()).toInt()) }
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                 .background(AS.Card)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
         ) {
             // Title row
@@ -164,7 +161,7 @@ fun SettingsSheet(
                         maxLines = 1
                     )
                     Txt(
-                        if (state.loggedIn) "已链接网易云音乐" else "点击扫码登录网易云账号",
+                        if (state.loggedIn) "已链接网易云音乐 · 点头像管理" else "点击扫码登录网易云账号",
                         AS.subtitle()
                     )
                 }
@@ -172,30 +169,17 @@ fun SettingsSheet(
             }
 
             Spacer(Modifier.height(22.dp))
-            Txt("账号", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            GroupLabel("账号")
             SheetGroup {
                 SheetValueRow(
-                    "音质",
+                    "默认音质",
                     "WiFi ${com.kyant.backdrop.catalog.appstore.music.AudioQuality.from(state.wifiQuality).label} · 移动 ${com.kyant.backdrop.catalog.appstore.music.AudioQuality.from(state.mobileQuality).label}",
                     onQuality
                 )
                 SheetDivider()
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(
-                            if (state.backgroundAllowed) Color.Transparent
-                            else AS.Blue.copy(alpha = 0.08f + 0.12f * pulse.value)
-                        )
-                ) {
-                    SheetValueRow(
-                        "后台常驻权限",
-                        if (state.backgroundAllowed) "完全允许" else "去设置",
-                        onClick = { MusicServices.bridge.openBackgroundSettings() }
-                    )
+                BackgroundPermissionRow(state.backgroundAllowed) {
+                    MusicServices.bridge.openBackgroundSettings()
                 }
-                SheetDivider()
-                SheetLinkRow(if (state.loggedIn) "重新扫码登录" else "链接网易云账号", onNeteaseLogin)
                 if (state.loggedIn) {
                     SheetDivider()
                     SheetLinkRow("退出登录", onClick = { logoutConfirm = true }, color = Color(0xFFFF453A))
@@ -203,49 +187,85 @@ fun SettingsSheet(
             }
 
             Spacer(Modifier.height(22.dp))
-            Txt("播放", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            GroupLabel("播放")
             SheetGroup {
-                SheetLinkRow("播放胶囊", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Capsule) })
+                SheetLinkRow("播放胶囊", onClick = {
+                    onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Capsule)
+                })
                 SheetDivider()
                 SheetValueRow("缓存与预加载", formatBytes(state.audioCacheLimitMb * 1024L * 1024L), onClick = {
                     onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Cache)
                 })
                 SheetDivider()
-                SheetLinkRow("JS 音乐源脚本导入", onScriptImport)
+                SheetValueRow("缓存管理", formatBytes(state.cacheInfo.totalBytes), onCache)
             }
 
             Spacer(Modifier.height(22.dp))
-            Txt("外观", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            GroupLabel("外观")
             SheetGroup {
-                SheetLinkRow("顶栏、界面大小与卡片", onCustomize)
+                SheetValueRow(
+                    "顶栏与详情页",
+                    if (state.detailTopStyle == com.kyant.backdrop.catalog.appstore.music.DetailTopStyle.Solid) "纯色"
+                    else "Haze",
+                    onClick = {
+                        onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Appearance)
+                    }
+                )
                 SheetDivider()
-                SheetLinkRow("分享海报", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Poster) })
+                SheetLinkRow("分享海报", onClick = {
+                    onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Poster)
+                })
             }
 
             Spacer(Modifier.height(22.dp))
-            Txt("歌词", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            GroupLabel("歌词")
             SheetGroup {
-                SheetLinkRow("卡片歌词", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Lyrics) })
+                SheetLinkRow("卡片歌词", onClick = {
+                    onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Lyrics)
+                })
                 SheetDivider()
-                SheetLinkRow("沉浸式歌词", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Immersive) })
+                SheetLinkRow("沉浸式歌词", onClick = {
+                    onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Immersive)
+                })
                 SheetDivider()
-                SheetLinkRow("沉浸式歌词背景", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Fluid) })
+                SheetLinkRow("沉浸式歌词背景", onClick = {
+                    onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Fluid)
+                })
             }
 
             Spacer(Modifier.height(22.dp))
-            Txt("歌词源", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            GroupLabel("歌词源")
             SheetGroup {
-                SheetLinkRow("TTML 与酷狗 KRC", onClick = { onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Source) })
+                SheetValueRow(
+                    "TTML 与酷狗 KRC",
+                    when {
+                        state.amllTtmlEnabled && state.kugouKrcEnabled -> "全部开启"
+                        state.amllTtmlEnabled -> "仅 TTML"
+                        state.kugouKrcEnabled -> "仅 KRC"
+                        else -> "全部关闭"
+                    },
+                    onClick = {
+                        onOpenFineTune(com.kyant.backdrop.catalog.appstore.music.FineTuneGroup.Source)
+                    }
+                )
             }
 
             Spacer(Modifier.height(22.dp))
-            Txt("维护", AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+            GroupLabel("音源")
+            SheetGroup {
+                SheetValueRow(
+                    "JS 音乐源脚本",
+                    if (state.scripts.isEmpty()) "未导入" else "${state.scripts.count { it.enabled }} / ${state.scripts.size} 已启用",
+                    onScriptImport
+                )
+            }
+
+            Spacer(Modifier.height(22.dp))
+            GroupLabel("维护")
             SheetGroup {
                 SheetLinkRow("自检与修复", { runCheck(false) })
                 SheetDivider()
-                SheetValueRow("缓存管理", formatBytes(state.cacheInfo.totalBytes), onCache)
-                SheetDivider()
-                SheetValueRow("版本", "1.3.61", onClick = null)
+                SheetValueRow("版本", MusicServices.bridge.appVersion.ifBlank { "1.3.62" }, onClick = null)
             }
 
             Spacer(Modifier.height(24.dp))
@@ -270,6 +290,37 @@ fun SettingsSheet(
             onRepair = { runCheck(true) },
             onDismiss = { checkOpen = false }
         )
+    }
+}
+
+@Composable
+private fun GroupLabel(text: String) {
+    Txt(text, AS.caption().copy(color = AS.Text3), Modifier.padding(start = 4.dp, bottom = 8.dp))
+}
+
+/**
+ * 后台常驻权限行。只有真正缺少权限时才创建那条呼吸动画：把它放在这里而不是
+ * SettingsSheet 顶部，是为了让面板关闭（子树离开组合）时动画能真正停下，
+ * 否则 InfiniteTransition 会在整个进程生命周期里每帧唤醒一次 Choreographer。
+ */
+@Composable
+private fun BackgroundPermissionRow(allowed: Boolean, onClick: () -> Unit) {
+    if (allowed) {
+        SheetValueRow("后台常驻权限", "完全允许", onClick)
+        return
+    }
+    val pulse = rememberInfiniteTransition(label = "background-permission").animateFloat(
+        initialValue = 0.15f,
+        targetValue = 0.55f,
+        animationSpec = infiniteRepeatable(tween(720), RepeatMode.Reverse),
+        label = "background-pulse"
+    )
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(AS.Blue.copy(alpha = 0.08f + 0.12f * pulse.value))
+    ) {
+        SheetValueRow("后台常驻权限", "去设置", onClick)
     }
 }
 

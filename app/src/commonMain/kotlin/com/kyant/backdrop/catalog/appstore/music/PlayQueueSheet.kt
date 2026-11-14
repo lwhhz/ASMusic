@@ -4,7 +4,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,16 +39,16 @@ import com.kyant.backdrop.catalog.appstore.tap
  * the queue itself. The active row is highlighted.
  */
 @Composable
-fun PlayQueueSheet() {
+fun PlayQueueSheet(visible: Boolean, onDismiss: () -> Unit) {
     val state = MusicServices.state
     val bridge = MusicServices.bridge
     val progress by animateFloatAsState(
-        if (state.queueSheetOpen) 1f else 0f,
+        if (visible) 1f else 0f,
         animationSpec = spring(dampingRatio = .92f, stiffness = 380f)
     )
     if (progress < .001f) return
-    LaunchedEffect(state.queueSheetOpen) {
-        if (state.queueSheetOpen) bridge.refreshHeartQueue()
+    LaunchedEffect(visible) {
+        if (visible) bridge.refreshHeartQueue()
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -57,7 +56,7 @@ fun PlayQueueSheet() {
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = .62f * progress))
-                .tap { state.queueSheetOpen = false }
+                .tap(onDismiss)
         )
         Column(
             Modifier
@@ -86,7 +85,7 @@ fun PlayQueueSheet() {
                         .size(32.dp)
                         .clip(CircleShape)
                         .background(AS.CardElevated)
-                        .tap { state.queueSheetOpen = false },
+                        .tap(onDismiss),
                     contentAlignment = Alignment.Center
                 ) { Txt("✓", AS.body().copy(fontSize = 16.sp, color = AS.Blue)) }
             }
@@ -105,7 +104,7 @@ fun PlayQueueSheet() {
                                 .clip(RoundedCornerShape(12.dp))
                                 .tap {
                                     bridge.playQueueIndex(index)
-                                    state.queueSheetOpen = false
+                                    onDismiss()
                                 }
                                 .padding(vertical = 8.dp, horizontal = 6.dp),
                             verticalAlignment = Alignment.CenterVertically

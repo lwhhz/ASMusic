@@ -122,7 +122,8 @@ appstore-compose/
 │     ├─ LyricCards.kt          # 歌词卡片
 │     ├─ AmlvImmersiveLyrics.kt # 沉浸式歌词（expect）
 │     ├─ ArtistPage.kt          # 艺人页
-│     ├─ AccountExtras.kt       # 自定义页、缓存管理、弹层
+│     ├─ AccountExtras.kt       # 设置页弹层（缓存/脚本/海报/目标）与通用设置控件
+│     ├─ FineTunePage.kt        # 设置子页（按用户意图分 8 组）
 │     └─ MusicBridge.kt         # UI ↔ 平台层接口（state + 业务方法）
 ├─ androidApp/          # Android 壳 + 播放/网络/脚本运行时
 │  ├─ MusicBridgeImpl.kt        # 桥接实现（播放、缓存、账号、音源解析）

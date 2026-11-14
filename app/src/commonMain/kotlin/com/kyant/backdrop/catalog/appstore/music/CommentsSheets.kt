@@ -3,7 +3,6 @@ package com.kyant.backdrop.catalog.appstore.music
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,13 +52,16 @@ import com.kyant.backdrop.shadow.InnerShadow
 fun CommentsSheet(
     songId: Long?,
     total: Int,
+    visible: Boolean,
     backdrop: Backdrop,
     onDismiss: () -> Unit,
     onOpenComment: (CommentItem) -> Unit
 ) {
     val bridge = MusicServices.bridge
+    // 可见性由导航栈给出，而不是"songId 非空"：关闭后 songId 仍保留，
+    // 这样滑出动画期间内容不会先一步变空。
     val progress by animateFloatAsState(
-        if (songId != null) 1f else 0f,
+        if (visible) 1f else 0f,
         animationSpec = spring(dampingRatio = .92f, stiffness = 380f)
     )
     if (progress < .001f) return
@@ -173,11 +175,12 @@ fun CommentsSheet(
 @Composable
 fun CommentDetailSheet(
     comment: CommentItem?,
+    visible: Boolean,
     backdrop: Backdrop,
     onDismiss: () -> Unit
 ) {
     val progress by animateFloatAsState(
-        if (comment != null) 1f else 0f,
+        if (visible) 1f else 0f,
         animationSpec = spring(dampingRatio = .92f, stiffness = 380f)
     )
     if (progress < .001f) return

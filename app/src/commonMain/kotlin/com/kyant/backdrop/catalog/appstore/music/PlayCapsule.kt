@@ -11,7 +11,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,7 +40,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -96,6 +94,7 @@ fun PlayCapsule(
     onSeek: (Long) -> Unit,
     onOpen: () -> Unit,
     onQuality: () -> Unit = {},
+    onOpenQueue: () -> Unit = {},
     liked: Boolean = false,
     onLike: () -> Unit = {},
     corner: () -> Float = { 1f },
@@ -204,6 +203,7 @@ fun PlayCapsule(
                         onNext = onNext,
                         onSeek = onSeek,
                         onQuality = onQuality,
+                        onOpenQueue = onOpenQueue,
                         liked = liked,
                         onLike = onLike
                     )
@@ -322,6 +322,7 @@ private fun ExpandedControls(
     onNext: () -> Unit,
     onSeek: (Long) -> Unit,
     onQuality: () -> Unit,
+    onOpenQueue: () -> Unit,
     liked: Boolean,
     onLike: () -> Unit
 ) {
@@ -343,7 +344,7 @@ private fun ExpandedControls(
             CircleIconButton(
                 // 真正禁用：不挂点击、半透明，避免看起来可点却没反应
                 onClick = {
-                    if (!streamOnly) state.queueSheetOpen = true
+                    if (!streamOnly) onOpenQueue()
                 },
                 modifier = if (streamOnly) Modifier.alpha(0.3f) else Modifier,
                 enabled = !streamOnly

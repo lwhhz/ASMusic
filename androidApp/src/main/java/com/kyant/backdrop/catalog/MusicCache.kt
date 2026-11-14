@@ -57,13 +57,35 @@ class MusicCache(context: Context) {
 
     // Cap by decoded bytes rather than entry count: one 512 px cover costs ~1 MB,
     // so a fixed entry count could hold 60+ MB on a large screen.
+    //
+    // 这个 map 会被 4 个并发的解码线程同时读写（decodeGate 的许可数是 4），而
+    // accessOrder = true 的 LinkedHashMap 连 get() 都会改内部链表 —— 无锁访问会偶发
+    // ArrayIndexOutOfBounds / 死循环。所有访问都必须经过 imageLock。
     private var imageCacheBytes = 0L
+    private val imageLock = Any()
     private val memoryImages = object : LinkedHashMap<String, ImageBitmap>(32, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?): Boolean {
-            val limit = 36L * 1024 * 1024
-            if (eldest == null) return size > 128
-            imageCacheBytes -= eldest.value.width.toLong() * eldest.value.height * 4
-            return imageCacheBytes > limit || size > 128
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?): Boolean =
+            eldest == null && size > 128
+    }
+
+    /** 真实占用字节数：RGB_565 是 2 B/px，按 4 算会让可用额度凭空少一半。 */
+    private fun bitmapBytes(bitmap: ImageBitmap): Long = runCatching {
+        bitmap.asAndroidBitmap().byteCount.toLong()
+    }.getOrDefault(bitmap.width.toLong() * bitmap.height * 2)
+
+    private fun memoryGet(key: String): ImageBitmap? = synchronized(imageLock) {
+        memoryImages[key]
+    }
+
+    private fun memoryPut(key: String, bitmap: ImageBitmap) = synchronized(imageLock) {
+        memoryImages.put(key, bitmap)?.let { imageCacheBytes -= bitmapBytes(it) }
+        imageCacheBytes += bitmapBytes(bitmap)
+        val limit = 36L * 1024 * 1024
+        val iterator = memoryImages.keys.iterator()
+        while ((imageCacheBytes > limit || memoryImages.size > 128) && iterator.hasNext()) {
+            val eldestKey = iterator.next()
+            memoryImages[eldestKey]?.let { imageCacheBytes -= bitmapBytes(it) }
+            iterator.remove()
         }
     }
 
@@ -111,7 +133,7 @@ class MusicCache(context: Context) {
 
     suspend fun image(url: String, maxEdge: Int = 512): ImageBitmap? {
         val key = "$url@$maxEdge"
-        memoryImages[key]?.let { return it }
+        memoryGet(key)?.let { return it }
         val bmp = withContext(Dispatchers.IO) {
             decodeGate.withPermit {
                 runCatching {
@@ -131,8 +153,7 @@ class MusicCache(context: Context) {
             }
         }
         if (bmp != null) {
-            imageCacheBytes += bmp.width.toLong() * bmp.height * 4
-            memoryImages[key] = bmp
+            memoryPut(key, bmp)
         }
         return bmp
     }
@@ -163,7 +184,9 @@ class MusicCache(context: Context) {
                 if (file.exists()) file.delete()
                 tmp.renameTo(file)
             }
-            memoryImages[url] = target
+            // 这里不写内存缓存：putImage 产出的尺寸（800）和 image() 的 key
+            // （"$url@<maxEdge>"）对不上，写进去只会占两份字节且永远命中不了。
+            // 磁盘已经落盘，下一次 image() 会按需要的 maxEdge 重新解码。
             target
         }
     }

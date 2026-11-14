@@ -14,7 +14,10 @@ import com.kyant.backdrop.catalog.utils.BackHandler
 data class LyricTextStyle(
     val fontSize: Float = 34f,
     val fontWeight: Float = 700f,
-    /** 0 = system, 1 = sans, 2 = serif, 3 = monospace, 4 = rounded. */
+    /**
+     * Index into the system font-family list (0..7):
+     * 默认 / 细体 / 紧缩 / 中黑 / 衬线 / 等宽 / 手写 / 圆润。
+     */
     val fontFamily: Int = 0,
     val maskProfanity: Boolean = true,
     /** Seconds the view keeps the user's scroll before snapping back to the player. */
@@ -39,18 +42,11 @@ expect fun AmlvImmersiveLyrics(
 )
 
 @Composable
-fun ImmersiveLyricsPage(
-    song: Song,
-    lines: List<LyricLine>,
-    positionMs: Long,
-    playing: Boolean,
-    style: LyricTextStyle,
-    onSeek: (Long) -> Unit,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    BackHandler(onBack = onClose)
+fun ImmersiveLyricsPage(modifier: Modifier = Modifier) {
     // The AMLL surface itself is hosted at the app root (so its Pixi background is
-    // already warm); this page only provides the backdrop and the back handling.
+    // already warm); this page only provides the black backdrop.
+    //
+    // 返回键统一由 MusicApp 的导航栈处理（返回 = 出栈），这里不再单独注册 BackHandler：
+    // 两个 BackHandler 同时 enabled 时，桌面端的 actual 实现会画出两个重合的返回按钮。
     Box(modifier.fillMaxSize().background(Color.Black))
 }

@@ -38,7 +38,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -48,7 +47,6 @@ import com.kyant.backdrop.catalog.appstore.CircleButton
 import com.kyant.backdrop.catalog.appstore.CircleKind
 import com.kyant.backdrop.catalog.appstore.ChevronRight
 import com.kyant.backdrop.catalog.appstore.InfoRow
-import com.kyant.backdrop.catalog.appstore.SectionHeader
 import com.kyant.backdrop.catalog.appstore.Txt
 import com.kyant.backdrop.catalog.appstore.tap
 import dev.chrisbanes.haze.HazeInput
@@ -57,6 +55,8 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.hazeBlur
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 
 @Composable
@@ -85,11 +85,30 @@ fun SongDetailPage(
     var social by remember(songId) { mutableStateOf<SongSocial?>(null) }
 
     LaunchedEffect(songId) {
-        song = runCatching { bridge.songDetail(songId) }.getOrNull() ?: Fixtures.song(songId)
-        lines = runCatching { bridge.lyric(songId) }.getOrDefault(Fixtures.lyric(songId))
-        comments = runCatching { bridge.comments(songId) }.getOrDefault(Fixtures.comments(songId))
-        social = runCatching { bridge.songSocial(songId) }.getOrNull()
-        runCatching { bridge.songQualities(songId) }
+        // 并行请求：五个接口原本串行，首屏要等 5 个 RTT 依次完成。相互独立，
+        // 并发后总耗时约等于最慢的那个；任何一个失败都回落到本地 fixture。
+        coroutineScope {
+            val detailTask = async {
+                runCatching { bridge.songDetail(songId) }.getOrNull()
+            }
+            val lyricTask = async {
+                runCatching { bridge.lyric(songId) }.getOrDefault(Fixtures.lyric(songId))
+            }
+            val commentsTask = async {
+                runCatching { bridge.comments(songId) }.getOrDefault(Fixtures.comments(songId))
+            }
+            val socialTask = async {
+                runCatching { bridge.songSocial(songId) }.getOrNull()
+            }
+            val qualitiesTask = async {
+                runCatching { bridge.songQualities(songId) }
+            }
+            song = detailTask.await() ?: Fixtures.song(songId)
+            lines = lyricTask.await()
+            comments = commentsTask.await()
+            social = socialTask.await()
+            qualitiesTask.await()
+        }
     }
 
     val current = song
@@ -681,11 +700,4 @@ private fun CommentCard(comment: CommentItem, onOpen: () -> Unit) {
         Spacer(Modifier.weight(1f))
         Txt("♡ ${formatCount(comment.liked)}", AS.caption().copy(color = AS.Text3))
     }
-}
-
-private fun formatTime(ms: Long): String {
-    val s = ms / 1000
-    val m = s / 60
-    val sec = s % 60
-    return "$m:${if (sec < 10) "0" else ""}$sec"
 }

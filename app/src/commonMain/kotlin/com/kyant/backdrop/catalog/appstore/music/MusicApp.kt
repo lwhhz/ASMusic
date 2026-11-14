@@ -9,10 +9,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateDpAsState
@@ -39,7 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,20 +55,17 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.ScrollState
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.catalog.appstore.AS
 import com.kyant.backdrop.catalog.appstore.CircleButton
 import com.kyant.backdrop.catalog.appstore.CircleKind
-import com.kyant.backdrop.catalog.appstore.Platform
 import com.kyant.backdrop.catalog.appstore.SettingsSheet
 import com.kyant.backdrop.catalog.appstore.Toast
 import com.kyant.backdrop.catalog.appstore.Txt
@@ -89,6 +81,35 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val MusicTabLabels = listOf("今天", "新歌", "我的", "统计", "搜索")
+
+// ---- 导航栈元素 ----
+// 页面用 "<kind>:<payload>" 编码（冒号是页面标记，覆盖层名字里没有冒号）。
+private const val NavSettings = "set"
+private const val NavQr = "qr"
+private const val NavScript = "script"
+private const val NavPicker = "picker"
+private const val NavCache = "cache"
+private const val NavGoal = "goal"
+private const val NavAlbumInfo = "ainfo"
+private const val NavArtistInfo = "rinfo"
+private const val NavComments = "comments"
+private const val NavCommentDetail = "cmtd"
+private const val NavQualityPrefs = "qprefs"
+private const val NavQueue = "queue"
+private const val NavSongQuality = "qsong"
+private const val NavImmersive = "immersive"
+
+/**
+ * true 表示这是一个整页路由（s: 歌曲 / p: 歌单 / a: 专辑 / r: 艺人 / f: 设置子页），
+ * false 表示覆盖层（set / qr / cache …）。
+ *
+ * "c:"（旧的自定义二级页）已不再产生；显式排除它，好让升级前保存下来的旧栈
+ * 不会把一个不存在的页面当成当前页。
+ */
+private fun String.isNavPage(): Boolean =
+    length > 1 && this[1] == ':' &&
+        (startsWith("s:") || startsWith("p:") || startsWith("a:") ||
+            startsWith("r:") || startsWith("f:"))
 
 @Composable
 private fun <T> PageTransition(
@@ -130,34 +151,51 @@ fun MusicApp() {
     val backdrop = rememberLayerBackdrop()
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    // Secondary screens live on a small stack: "s:<id>" = song, "p:<id>" = playlist/album.
-    var stack by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    // 单一导航栈：页面（"s:<id>" / "p:<id>" / "a:<id>" / "r:<id>" / "c:" / "f:<group>"）
+    // 与覆盖层（NavSettings / NavQr / …）共用一个 List。
+    //
+    // 这样「返回」永远等于 pop()，不再需要在每个入口手动记住"从哪来"：
+    // 设置 → 三级页 只是把 f: 压在 set 上面，返回时 set 自然重新成为栈顶并显示。
+    // 覆盖层的 visible 全部由栈顶派生，因此各 sheet 的签名和行为保持不变。
+    var nav by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+
+    val topPage = nav.lastOrNull { it.isNavPage() }
+    val topLayer = nav.lastOrNull()
+
     // 仅用于性能日志：把当前页面名写进状态，帧监控日志里能看出是哪个页面掉的帧。
-    LaunchedEffect(tab, stack) {
+    LaunchedEffect(tab, topPage) {
         state.debugPage = when {
-            stack.lastOrNull()?.startsWith("s:") == true -> "song"
-            stack.lastOrNull()?.startsWith("p:") == true -> "playlist"
-            stack.lastOrNull()?.startsWith("a:") == true -> "album"
-            stack.lastOrNull()?.startsWith("r:") == true -> "artist"
-            else -> listOf("today", "new", "mine", "stats", "search").getOrElse(tab) { "tab" }
+            topPage == null -> listOf("today", "new", "mine", "stats", "search").getOrElse(tab) { "tab" }
+            topPage.startsWith("s:") -> "song"
+            topPage.startsWith("p:") -> "playlist"
+            topPage.startsWith("a:") -> "album"
+            topPage.startsWith("r:") -> "artist"
+            topPage.startsWith("f:") -> "finetune"
+            else -> "tab"
         }
     }
 
-    var accountOpen by remember { mutableStateOf(false) }
-    var qrOpen by remember { mutableStateOf(false) }
-    var scriptOpen by remember { mutableStateOf(false) }
-    var pickerOpen by remember { mutableStateOf(false) }
-    var cacheOpen by remember { mutableStateOf(false) }
-    var goalOpen by remember { mutableStateOf(false) }
+    // ---- 覆盖层可见性：全部由栈顶派生，保持 LIFO ----
+    val settingsOpen = topLayer == NavSettings
+    val qrOpen = topLayer == NavQr
+    val scriptOpen = topLayer == NavScript
+    val pickerOpen = topLayer == NavPicker
+    val cacheOpen = topLayer == NavCache
+    val goalOpen = topLayer == NavGoal
+    val albumIntroOpen = topLayer == NavAlbumInfo
+    val artistIntroOpen = topLayer == NavArtistInfo
+    val commentsOpen = topLayer == NavComments
+    val commentDetailOpen = topLayer == NavCommentDetail
+    val qualitySettingsOpen = topLayer == NavQualityPrefs
+    val queueOpen = topLayer == NavQueue
+    val songQualityOpen = topLayer == NavSongQuality
+    val immersiveOpen = topLayer == NavImmersive
+
     var albumIntro by remember { mutableStateOf<Pair<String, String>?>(null) }
     var artistIntro by remember { mutableStateOf<Pair<String, String>?>(null) }
     var commentsSongId by remember { mutableStateOf<Long?>(null) }
     var commentsTotal by remember { mutableStateOf(0) }
     var commentDetail by remember { mutableStateOf<CommentItem?>(null) }
-    var qualitySettingsOpen by remember { mutableStateOf(false) }
-    // Set when a secondary page/sheet was opened from Settings. Closing it returns
-    // to Settings instead of dropping the user back on the underlying tab.
-    var settingsReturn by remember { mutableStateOf(false) }
     var immersiveSong by remember { mutableStateOf<Song?>(null) }
     var immersiveLines by remember { mutableStateOf<List<LyricLine>>(emptyList()) }
 
@@ -169,8 +207,8 @@ fun MusicApp() {
     val detailScroll = rememberScrollState()
     val playlistScroll = androidx.compose.foundation.lazy.rememberLazyListState()
     val artistScroll = rememberScrollState()
-    val customScroll = rememberScrollState()
     val fineTuneScroll = rememberScrollState()
+    val settingsScroll = rememberScrollState()
     val artistNames = remember { HashMap<Long, String>() }
     val scope = rememberCoroutineScope()
 
@@ -181,12 +219,21 @@ fun MusicApp() {
         }
     }
 
+    // ---- 导航原语 ----
+    fun push(layer: String) {
+        if (nav.lastOrNull() == layer) return
+        nav = nav + layer
+    }
+
+    fun pop() {
+        if (nav.isNotEmpty()) nav = nav.dropLast(1)
+    }
+
     fun selectTab(idx: Int) {
         // Any secondary screen is dismissed when the tab bar is used, otherwise it
         // would keep covering the primary page the user just switched to.
-        if (stack.isNotEmpty()) {
-            stack = emptyList()
-            settingsReturn = false
+        if (nav.isNotEmpty()) {
+            nav = emptyList()
             if (idx != tab) tab = idx
             return
         }
@@ -212,7 +259,7 @@ fun MusicApp() {
     // to change one of its own keys, which cancelled the in-flight `bridge.lyric()`
     // call; the CancellationException was swallowed by runCatching and the page fell
     // back to the fixture lyric (the same "test lyrics" for every song).
-    val openImmersive = immersiveSong?.id
+    val openImmersive = if (immersiveOpen) immersiveSong?.id else null
     LaunchedEffect(state.currentSong?.id, openImmersive) {
         val current = state.currentSong ?: return@LaunchedEffect
         if (openImmersive == null || openImmersive == current.id) return@LaunchedEffect
@@ -227,14 +274,14 @@ fun MusicApp() {
     }
 
     fun openSong(id: Long) {
-        val top = stack.lastOrNull()
+        val top = nav.lastOrNull()
         if (top == "s:$id") return
         // Replace an already-open song page instead of stacking details; this is what
         // makes switching songs refresh the page in place.
-        stack = if (top != null && top.startsWith("s:")) {
-            stack.dropLast(1) + "s:$id"
+        nav = if (top != null && top.startsWith("s:")) {
+            nav.dropLast(1) + "s:$id"
         } else {
-            stack + "s:$id"
+            nav + "s:$id"
         }
         scope.launch { detailScroll.scrollTo(0) }
     }
@@ -252,61 +299,37 @@ fun MusicApp() {
     }
 
     fun openPlaylist(id: Long) {
-        stack = stack + "p:$id"
+        nav = nav + "p:$id"
         scope.launch { playlistScroll.scrollToItem(0) }
     }
 
     fun openAlbum(id: Long) {
         if (id <= 0L) return
-        stack = stack + "a:$id"
+        nav = nav + "a:$id"
         scope.launch { playlistScroll.scrollToItem(0) }
     }
 
     fun openArtist(id: Long, name: String) {
         if (id <= 0L) return
         artistNames[id] = name
-        stack = stack + "r:$id"
+        nav = nav + "r:$id"
         scope.launch { artistScroll.scrollTo(0) }
     }
 
-    fun openCustomize() {
-        if (stack.contains("c:")) return
-        settingsReturn = true
-        stack = stack + "c:"
-        scope.launch { customScroll.scrollTo(0) }
-    }
-
     fun openFineTune(group: FineTuneGroup) {
-        stack = stack + "f:${group.name}"
+        nav = nav + "f:${group.name}"
         scope.launch { fineTuneScroll.scrollTo(0) }
-    }
-
-    fun closeSettingsChild() {
-        if (settingsReturn) {
-            settingsReturn = false
-            accountOpen = true
-        }
-    }
-
-    fun popPage() {
-        val closingCustomize = stack.lastOrNull() == "c:"
-        val closingFineTune = stack.lastOrNull()?.startsWith("f:") == true
-        // 从「设置」直接进入的三级页，返回时应回到设置列表；从自定义页进入的
-        // 则回到自定义页，不重新弹设置。
-        val parentIsCustomize = stack.dropLast(1).lastOrNull() == "c:"
-        if (stack.isNotEmpty()) stack = stack.dropLast(1)
-        if (closingCustomize || (closingFineTune && !parentIsCustomize)) closeSettingsChild()
     }
 
     // Follow playback changes while a song page is open (next/previous, queue jump,
     // auto-advance). Without this the page kept displaying the song it was opened on.
     LaunchedEffect(state.currentSong?.id) {
         val id = state.currentSong?.id ?: return@LaunchedEffect
-        val top = stack.lastOrNull() ?: return@LaunchedEffect
+        val top = nav.lastOrNull() ?: return@LaunchedEffect
         if (!top.startsWith("s:")) return@LaunchedEffect
         val shown = top.removePrefix("s:").toLongOrNull()
         if (shown != id) {
-            stack = stack.dropLast(1) + "s:$id"
+            nav = nav.dropLast(1) + "s:$id"
             detailScroll.scrollTo(0)
         }
     }
@@ -342,7 +365,7 @@ fun MusicApp() {
     Box(Modifier.fillMaxSize().background(AS.Bg)) {
         // The song detail page paints content under the status bar so the Haze panel
         // can blur it there; other pages keep the normal inset.
-        val underStatusBar = stack.lastOrNull()?.startsWith("s:") == true
+        val underStatusBar = topPage?.startsWith("s:") == true
         Box(
             Modifier
                 .fillMaxSize()
@@ -354,7 +377,7 @@ fun MusicApp() {
                 .background(AS.Bg)
         ) {
             val tabExit by animateFloatAsState(
-                targetValue = if (stack.isNotEmpty()) 1f else 0f,
+                targetValue = if (topPage != null) 1f else 0f,
                 animationSpec = tween(320),
                 label = "tab-exit"
             )
@@ -363,8 +386,8 @@ fun MusicApp() {
             // running behind an opaque page. Wait for the fade-out to finish first so
             // the transition still looks identical.
             var tabComposed by remember { mutableStateOf(true) }
-            LaunchedEffect(stack.isNotEmpty()) {
-                if (stack.isEmpty()) {
+            LaunchedEffect(topPage != null) {
+                if (topPage == null) {
                     tabComposed = true
                 } else {
                     delay(360)
@@ -384,16 +407,16 @@ fun MusicApp() {
             ) {
                 PageTransition(tab) { tabIndex ->
                     when (tabIndex) {
-                        0 -> TodayPage(todayScroll, ::openPlaylist, ::openSong, { accountOpen = true }, { pickerOpen = true }, backdrop)
-                        1 -> NewReleasesPage(newScroll, ::openPlaylist, ::openAlbum, ::openSongFromList, { accountOpen = true })
-                        2 -> MyPlaylistsPage(mineScroll, ::openPlaylist, ::openSongFromList, { accountOpen = true })
-                        3 -> StatsPage(statsScroll, { accountOpen = true }, { goalOpen = true })
-                        4 -> MusicSearchPage(searchScroll, ::openSongFromList, ::openPlaylist, { accountOpen = true })
+                        0 -> TodayPage(todayScroll, ::openPlaylist, ::openSong, { push(NavSettings) }, { push(NavPicker) }, backdrop)
+                        1 -> NewReleasesPage(newScroll, ::openPlaylist, ::openAlbum, ::openSongFromList, { push(NavSettings) })
+                        2 -> MyPlaylistsPage(mineScroll, ::openPlaylist, ::openSongFromList, { push(NavSettings) })
+                        3 -> StatsPage(statsScroll, { push(NavSettings) }, { push(NavGoal) })
+                        4 -> MusicSearchPage(searchScroll, ::openSongFromList, ::openPlaylist, { push(NavSettings) })
                     }
                 }
             }
 
-            PageTransition(stack.lastOrNull()) { top ->
+            PageTransition(topPage) { top ->
             when {
                     top != null && top.startsWith("s:") -> {
                         val sid = top.removePrefix("s:").toLongOrNull()
@@ -401,18 +424,23 @@ fun MusicApp() {
                             SongDetailPage(
                                 songId = sid,
                                 scrollState = detailScroll,
-                                onBack = ::popPage,
+                                onBack = ::pop,
                                 onShare = { shareSong(sid) },
                                 onOpenAlbum = ::openAlbum,
                                 onOpenArtist = { id, name -> openArtist(id, name) },
                                 onOpenComments = { total ->
                                     commentsTotal = total
                                     commentsSongId = sid
+                                    push(NavComments)
                                 },
-                                onOpenComment = { commentDetail = it },
+                                onOpenComment = {
+                                    commentDetail = it
+                                    push(NavCommentDetail)
+                                },
                                 onOpenImmersive = { song, lyrics ->
                                     immersiveSong = song
                                     immersiveLines = lyrics
+                                    push(NavImmersive)
                                 }
                             )
                         }
@@ -421,8 +449,8 @@ fun MusicApp() {
                         val pid = top.removePrefix("p:").toLongOrNull()
                         if (pid != null) {
                             PlaylistDetailPage(
-                                pid, playlistScroll, ::popPage, ::openSongFromList,
-                                onAvatar = { accountOpen = true }
+                                pid, playlistScroll, ::pop, ::openSongFromList,
+                                onAvatar = { push(NavSettings) }
                             )
                         }
                     }
@@ -430,9 +458,12 @@ fun MusicApp() {
                         val aid = top.removePrefix("a:").toLongOrNull()
                         if (aid != null) {
                             PlaylistDetailPage(
-                                aid, playlistScroll, ::popPage, ::openSongFromList,
-                                onAvatar = { accountOpen = true }, isAlbum = true,
-                                onOpenAlbumIntro = { title, text -> albumIntro = title to text }
+                                aid, playlistScroll, ::pop, ::openSongFromList,
+                                onAvatar = { push(NavSettings) }, isAlbum = true,
+                                onOpenAlbumIntro = { title, text ->
+                                    albumIntro = title to text
+                                    push(NavAlbumInfo)
+                                }
                             )
                         }
                     }
@@ -443,25 +474,21 @@ fun MusicApp() {
                                 artistId = rid,
                                 artistName = artistNames[rid] ?: "艺术家",
                                 scrollState = artistScroll,
-                                onBack = ::popPage,
+                                onBack = ::pop,
                                 onOpenSong = ::openSongFromList,
-                                onOpenIntro = { title, text -> artistIntro = title to text },
+                                onOpenIntro = { title, text ->
+                                    artistIntro = title to text
+                                    push(NavArtistInfo)
+                                },
                                 onOpenAlbum = ::openAlbum
                             )
                         }
                     }
-                    top != null && top.startsWith("c:") -> {
-                        CustomizePage(
-                            scrollState = customScroll,
-                            onBack = ::popPage,
-                            onOpenFineTune = ::openFineTune
-                        )
-                    }
                     top != null && top.startsWith("f:") -> {
-                        val group = runCatching {
-                            FineTuneGroup.valueOf(top.removePrefix("f:"))
-                        }.getOrDefault(FineTuneGroup.Capsule)
-                        FineTunePage(group, fineTuneScroll, ::popPage)
+                        val group = FineTuneGroup.entries
+                            .firstOrNull { it.name == top.removePrefix("f:") }
+                            ?: FineTuneGroup.Appearance
+                        FineTunePage(group, fineTuneScroll, ::pop)
                     }
                 }
             }
@@ -478,7 +505,7 @@ fun MusicApp() {
             val current = state.currentSong
             // On the song detail page the capsule stays and grows into a full-width
             // transport bar (progress + prev / play / next).
-            val detailOpen = stack.lastOrNull()?.startsWith("s:") == true
+            val detailOpen = topPage?.startsWith("s:") == true
             var capsuleShown by remember { mutableStateOf(false) }
             LaunchedEffect(current != null) { capsuleShown = current != null }
             val capsuleBlur by animateFloatAsState(
@@ -501,13 +528,15 @@ fun MusicApp() {
                             current,
                             backdrop,
                             expanded = detailOpen,
-                            onOpen = { openSong(current.id) }
+                            onOpen = { openSong(current.id) },
+                            onOpenQueue = { push(NavQueue) },
+                            onOpenQuality = { push(NavSongQuality) }
                         )
                         Spacer(Modifier.height(14.dp))
                     }
                 }
             }
-            val onDetail = stack.lastOrNull()?.startsWith("s:") == true
+            val onDetail = topPage?.startsWith("s:") == true
             val hideTabs = onDetail && state.detailHideTabs
             val tabsAlpha by animateFloatAsState(
                 targetValue = if (hideTabs) 0f else 1f,
@@ -577,201 +606,144 @@ fun MusicApp() {
             }
         }
 
-        if (state.toast != null) {
+        // toast 由 LaunchedEffect 在 1.8s 后清空，读两次之间可能变 null，不能断言非空。
+        state.toast?.let { message ->
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 170.dp)) {
-                Toast(state.toast!!)
+                Toast(message)
             }
         }
 
         SettingsSheet(
-            visible = accountOpen,
-            onOpenFineTune = { group ->
-                accountOpen = false
-                stack = stack + "f:${group.name}"
-            },
-            onDismiss = {
-                accountOpen = false
-                settingsReturn = false
-            },
-            onNeteaseLogin = {
-                settingsReturn = true
-                accountOpen = false
-                qrOpen = true
-            },
+            visible = settingsOpen,
+            scrollState = settingsScroll,
+            // 从设置进入子页只需压栈：设置本身留在栈里，返回时自动重新成为栈顶，
+            // 因此不再需要 settingsReturn / closeSettingsChild 这类"从哪来"的补丁。
+            onOpenFineTune = ::openFineTune,
+            onDismiss = ::pop,
+            onNeteaseLogin = { push(NavQr) },
             onLogout = {
                 scope.launch {
                     bridge.logout()
                     bridge.showToast("已退出登录")
                 }
             },
-            onScriptImport = {
-                settingsReturn = true
-                accountOpen = false
-                scriptOpen = true
-            },
-            onCache = {
-                settingsReturn = true
-                accountOpen = false
-                cacheOpen = true
-            },
-            onCustomize = {
-                accountOpen = false
-                openCustomize()
-            },
-            onQuality = {
-                settingsReturn = true
-                accountOpen = false
-                qualitySettingsOpen = true
-            }
+            onScriptImport = { push(NavScript) },
+            onCache = { push(NavCache) },
+            onQuality = { push(NavQualityPrefs) }
         )
         // Always composed so the sheet's own slide/fade runs on both open and close;
         // the content is kept while it animates out.
         AlbumIntroSheet(
-            visible = albumIntro != null,
+            visible = albumIntroOpen,
             title = albumIntro?.first ?: "",
             text = albumIntro?.second ?: "",
-            onDismiss = { albumIntro = null }
+            heading = "专辑简介",
+            onDismiss = ::pop
         )
         AlbumIntroSheet(
-            visible = artistIntro != null,
+            visible = artistIntroOpen,
             title = artistIntro?.first ?: "",
             text = artistIntro?.second ?: "",
-            onDismiss = { artistIntro = null }
+            heading = "艺人简介",
+            onDismiss = ::pop
         )
-        QrLoginSheet(qrOpen) {
-            qrOpen = false
-            closeSettingsChild()
-        }
-        ScriptImportSheet(scriptOpen) {
-            scriptOpen = false
-            closeSettingsChild()
-        }
-        TodayCardPicker(pickerOpen) { pickerOpen = false }
-        CacheSheet(cacheOpen) {
-            cacheOpen = false
-            closeSettingsChild()
-        }
-        GoalSheet(goalOpen) { goalOpen = false }
-        PlayQueueSheet()
+        QrLoginSheet(qrOpen, ::pop)
+        ScriptImportSheet(scriptOpen, ::pop)
+        TodayCardPicker(pickerOpen, ::pop)
+        CacheSheet(cacheOpen, ::pop)
+        GoalSheet(goalOpen, ::pop)
+        PlayQueueSheet(queueOpen, ::pop)
         CommentsSheet(
             songId = commentsSongId,
             total = commentsTotal,
+            visible = commentsOpen,
             backdrop = backdrop,
-            onDismiss = { commentsSongId = null },
-            onOpenComment = { commentDetail = it }
+            onDismiss = ::pop,
+            onOpenComment = {
+                commentDetail = it
+                push(NavCommentDetail)
+            }
         )
         CommentDetailSheet(
             comment = commentDetail,
+            visible = commentDetailOpen,
             backdrop = backdrop,
-            onDismiss = { commentDetail = null }
+            onDismiss = ::pop
         )
-        QualitySheet()
-        QualitySettingsSheet(qualitySettingsOpen) {
-            qualitySettingsOpen = false
-            closeSettingsChild()
-        }
+        QualitySheet(songQualityOpen, ::pop)
+        QualitySettingsSheet(qualitySettingsOpen, ::pop)
 
-        immersiveSong?.let { song ->
-            ImmersiveLyricsPage(
-                song = song,
-                lines = immersiveLines,
-                positionMs = if (state.currentSong?.id == song.id) state.positionMs else 0L,
-                playing = state.currentSong?.id == song.id && state.playing,
-                style = LyricTextStyle(
-                    fontSize = state.amllFontSize,
-                    fontWeight = state.amllFontWeight,
-                    fontFamily = state.amllFontFamily,
-                    maskProfanity = state.amllMaskProfanity,
-                    resumeDelaySec = state.amllResumeDelay
-                ),
-                onSeek = { bridge.seek(it) },
-                onClose = { immersiveSong = null }
-            )
+        if (immersiveOpen && immersiveSong != null) {
+            ImmersiveLyricsPage()
         }
 
         // Always composed: keeps the AMLL page (and its Pixi background) warm so the
         // immersive view opens without a visible load. Sits at 1 dp behind everything
         // while closed.
-        val surfaceSong = immersiveSong ?: state.currentSong
+        val surfaceSong = (if (immersiveOpen) immersiveSong else null) ?: state.currentSong
         // A1: keep the AMLL WebView (Pixi textures + JS heap) only while playing or
         // while the immersive page is open; release it 60 s after playback stops.
         var surfaceAllowed by remember { mutableStateOf(false) }
-        LaunchedEffect(state.playing, state.currentSong?.id, immersiveSong != null, state.keepAmllWarm) {
+        LaunchedEffect(state.playing, state.currentSong?.id, immersiveOpen, state.keepAmllWarm) {
             if (!state.keepAmllWarm) {
-                surfaceAllowed = immersiveSong != null
+                surfaceAllowed = immersiveOpen
                 return@LaunchedEffect
             }
-            if (state.playing || immersiveSong != null) {
+            if (state.playing || immersiveOpen) {
                 surfaceAllowed = true
             } else {
                 delay(60_000)
-                if (!state.playing && immersiveSong == null) surfaceAllowed = false
+                if (!state.playing && !immersiveOpen) surfaceAllowed = false
             }
         }
         if (surfaceSong != null && surfaceAllowed) {
-            AmlvImmersiveLyrics(
-                songId = surfaceSong.id,
-                coverUrl = surfaceSong.coverUrl,
-                lines = if (immersiveSong != null) immersiveLines else emptyList(),
-                positionMs = if (state.currentSong?.id == surfaceSong.id) state.positionMs else 0L,
-                playing = state.currentSong?.id == surfaceSong.id && state.playing,
-                style = LyricTextStyle(
-                    fontSize = state.amllFontSize,
-                    fontWeight = state.amllFontWeight,
-                    fontFamily = state.amllFontFamily,
-                    maskProfanity = state.amllMaskProfanity,
-                    resumeDelaySec = state.amllResumeDelay
-                ),
-                onSeek = { bridge.seek(it) },
-                visible = immersiveSong != null,
-                modifier = if (immersiveSong != null) {
-                    Modifier.fillMaxSize().zIndex(20f)
-                } else {
-                    Modifier.size(1.dp).zIndex(-1f)
-                }
+            AmllSurface(
+                song = surfaceSong,
+                lines = if (immersiveOpen) immersiveLines else emptyList(),
+                immersiveOpen = immersiveOpen
             )
         }
     }
 
-    BackHandler(
-        immersiveSong != null || qrOpen || scriptOpen || pickerOpen || cacheOpen || goalOpen ||
-            albumIntro != null || artistIntro != null || accountOpen || stack.isNotEmpty() || state.queueSheetOpen ||
-            commentsSongId != null || commentDetail != null ||
-            qualitySettingsOpen || state.qualitySheetOpen
-    ) {
-        when {
-            immersiveSong != null -> immersiveSong = null
-            qrOpen -> {
-                qrOpen = false
-                closeSettingsChild()
-            }
-            scriptOpen -> {
-                scriptOpen = false
-                closeSettingsChild()
-            }
-            pickerOpen -> pickerOpen = false
-            cacheOpen -> {
-                cacheOpen = false
-                closeSettingsChild()
-            }
-            goalOpen -> goalOpen = false
-            albumIntro != null -> albumIntro = null
-            artistIntro != null -> artistIntro = null
-            accountOpen -> {
-                accountOpen = false
-                settingsReturn = false
-            }
-            state.queueSheetOpen -> state.queueSheetOpen = false
-            commentsSongId != null -> commentsSongId = null
-            commentDetail != null -> commentDetail = null
-            qualitySettingsOpen -> {
-                qualitySettingsOpen = false
-                closeSettingsChild()
-            }
-            state.qualitySheetOpen -> state.qualitySheetOpen = false
-            stack.isNotEmpty() -> popPage()
+    // 唯一的返回入口：任何页面/覆盖层都只是栈里的一项，返回即出栈。
+    // 「后开的先关」由栈序保证，不再依赖 when 分支的书写顺序。
+    BackHandler(nav.isNotEmpty()) { pop() }
+}
+
+/**
+ * AMLL 宿主。`positionMs` / `playing` 每 500ms 变一次，读取必须留在这一层：
+ * 写在 MusicApp 的根 lambda 里，会让整个根作用域（含全部 sheet、列表与转场）
+ * 每 500ms 重组一次，白白吃掉每帧预算。
+ */
+@Composable
+private fun AmllSurface(
+    song: Song,
+    lines: List<LyricLine>,
+    immersiveOpen: Boolean
+) {
+    val state = MusicServices.state
+    val isCurrent = state.currentSong?.id == song.id
+    AmlvImmersiveLyrics(
+        songId = song.id,
+        coverUrl = song.coverUrl,
+        lines = lines,
+        positionMs = if (isCurrent) state.positionMs else 0L,
+        playing = isCurrent && state.playing,
+        style = LyricTextStyle(
+            fontSize = state.amllFontSize,
+            fontWeight = state.amllFontWeight,
+            fontFamily = state.amllFontFamily,
+            maskProfanity = state.amllMaskProfanity,
+            resumeDelaySec = state.amllResumeDelay
+        ),
+        onSeek = { MusicServices.bridge.seek(it) },
+        visible = immersiveOpen,
+        modifier = if (immersiveOpen) {
+            Modifier.fillMaxSize().zIndex(20f)
+        } else {
+            Modifier.size(1.dp).zIndex(-1f)
         }
-    }
+    )
 }
 
 /**
@@ -789,7 +761,9 @@ private fun CapsuleDock(
     song: Song,
     backdrop: Backdrop,
     expanded: Boolean,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    onOpenQueue: () -> Unit,
+    onOpenQuality: () -> Unit
 ) {
     val state = MusicServices.state
     val bridge = MusicServices.bridge
@@ -890,7 +864,8 @@ private fun CapsuleDock(
                 },
                 onSeek = { bridge.seek(it) },
                 onOpen = onOpen,
-                onQuality = { state.qualitySheetOpen = true },
+                onQuality = onOpenQuality,
+                onOpenQueue = onOpenQueue,
                 corner = { state.capsuleCorner }
             )
         }

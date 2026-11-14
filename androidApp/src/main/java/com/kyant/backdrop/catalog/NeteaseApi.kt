@@ -7,7 +7,6 @@ import com.kyant.backdrop.catalog.appstore.music.AlbumBrief
 import com.kyant.backdrop.catalog.appstore.music.ArtistBrief
 import com.kyant.backdrop.catalog.appstore.music.ArtistStat
 import com.kyant.backdrop.catalog.appstore.music.CommentItem
-import com.kyant.backdrop.catalog.appstore.music.Fixtures
 import com.kyant.backdrop.catalog.appstore.music.LyricLine
 import com.kyant.backdrop.catalog.appstore.music.PlayStats
 import com.kyant.backdrop.catalog.appstore.music.Playlist

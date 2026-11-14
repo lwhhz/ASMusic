@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
@@ -80,9 +81,10 @@ class MainActivity : ComponentActivity() {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        bridge = MusicBridgeImpl(applicationContext, config, proxy, direct, cache, player) { picker.launch("*/*") }
-        MusicServices.bridge = bridge!!
-        bridge!!.initState()
+        val created = MusicBridgeImpl(applicationContext, config, proxy, direct, cache, player) { picker.launch("*/*") }
+        bridge = created
+        MusicServices.bridge = created
+        created.initState()
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
@@ -115,21 +117,26 @@ class MainActivity : ComponentActivity() {
     }.getOrNull()
 
     override fun onDestroy() {
+        // 取消帧回调：否则它会一直持有本 Activity 的引用并永久自我重投。
+        frameCallback?.let { android.view.Choreographer.getInstance().removeFrameCallback(it) }
+        frameCallback = null
         bridge?.release()
         PlaybackHolder.player = null
         stopService(Intent(this, PlaybackService::class.java))
         super.onDestroy()
     }
     /**
-     * 轻量帧监控：Choreographer 每帧回调，记录掉帧分布。
+     * 轻量帧监控：Choreographer 每帧回调，统计掉帧分布。
      * 设备无 root、trace_processor 也不可达，用这个替代 Perfetto 做第一手定位。
+     *
+     * 只在 debug 构建启用，并且只写 Logcat（`adb logcat -s ASMusicFrame`）：
+     * 之前每个掉帧帧都同步 appendText 到 /sdcard，掉帧越多写得越多（抖动自激），
+     * 文件还会无限增长；Android 11+ 分区存储下多数场景其实写不进去。
      */
+    private var frameCallback: android.view.Choreographer.FrameCallback? = null
+
     private fun startFrameMonitor() {
-        val file = java.io.File(
-            android.os.Environment.getExternalStorageDirectory(),
-            "Android/data/$packageName/files/frames.txt"
-        )
-        file.parentFile?.mkdirs()
+        if (!BuildConfig.DEBUG) return
         val choreographer = android.view.Choreographer.getInstance()
         var last = 0L
         var frames = 0
@@ -145,26 +152,22 @@ class MainActivity : ComponentActivity() {
                     if (dt > 20) {
                         jank++
                         if (dt > worst) worst = dt
-                        runCatching {
-                            val mode = MusicServices.state.heartMode
-                            val playing = MusicServices.state.playing
-                            file.appendText("$now jank dt=${dt}ms heart=$mode playing=$playing page=${MusicServices.state.debugPage}\n")
-                        }
+                        Log.d("ASMusicFrame", "jank dt=${dt}ms page=${MusicServices.state.debugPage}")
                     }
                 }
                 last = now
                 if (now - windowStart >= 5000) {
-                    runCatching {
-                        file.appendText(
-                            "$now summary frames=$frames jank=$jank worst=${worst}ms " +
-                                "heart=${MusicServices.state.heartMode} page=${MusicServices.state.debugPage}\n"
-                        )
-                    }
+                    Log.d(
+                        "ASMusicFrame",
+                        "frames=$frames jank=$jank worst=${worst}ms heart=${MusicServices.state.heartMode} " +
+                            "page=${MusicServices.state.debugPage}"
+                    )
                     frames = 0; jank = 0; worst = 0L; windowStart = now
                 }
                 choreographer.postFrameCallback(this)
             }
         }
+        frameCallback = cb
         choreographer.postFrameCallback(cb)
     }
 

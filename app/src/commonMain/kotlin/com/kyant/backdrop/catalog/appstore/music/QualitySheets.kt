@@ -36,16 +36,16 @@ import com.kyant.backdrop.catalog.appstore.tap
 
 /** Per-song quality chooser, opened from the right of the next button. */
 @Composable
-fun QualitySheet() {
+fun QualitySheet(visible: Boolean, onDismiss: () -> Unit) {
     val state = MusicServices.state
     val bridge = MusicServices.bridge
     val progress by animateFloatAsState(
-        if (state.qualitySheetOpen) 1f else 0f,
+        if (visible) 1f else 0f,
         animationSpec = spring(dampingRatio = .92f, stiffness = 380f)
     )
     if (progress < .001f) return
-    LaunchedEffect(state.currentSong?.id, state.qualitySheetOpen) {
-        if (state.qualitySheetOpen) {
+    LaunchedEffect(state.currentSong?.id, visible) {
+        if (visible) {
             state.currentSong?.id?.let { runCatching { bridge.songQualities(it) } }
         }
     }
@@ -55,7 +55,7 @@ fun QualitySheet() {
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = .60f * progress))
-                .tap { state.qualitySheetOpen = false }
+                .tap(onDismiss)
         )
         Column(
             Modifier
@@ -67,7 +67,7 @@ fun QualitySheet() {
                 .background(AS.Card)
                 .padding(horizontal = 16.dp)
         ) {
-            SheetTitle("音质", "当前歌曲可选音质") { state.qualitySheetOpen = false }
+            SheetTitle("本曲音质", "当前歌曲可选音质", onDismiss)
             if (state.availableQualities.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Txt("正在获取这首歌的音质…", AS.subtitle())
@@ -87,7 +87,7 @@ fun QualitySheet() {
                                 .background(if (active) AS.Blue.copy(alpha = .20f) else AS.CardElevated)
                                 .tap {
                                     bridge.setPlaybackQuality(q.level)
-                                    state.qualitySheetOpen = false
+                                    onDismiss()
                                 }
                                 .padding(horizontal = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -146,7 +146,7 @@ fun QualitySettingsSheet(visible: Boolean, onDismiss: () -> Unit) {
                 .background(AS.Card)
                 .padding(horizontal = 16.dp)
         ) {
-            SheetTitle("音质", "分别设置 WiFi 与移动数据下的默认最高音质", onDismiss)
+            SheetTitle("默认音质", "分别设置 WiFi 与移动数据下的默认最高音质", onDismiss)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 QualityPrefSection(
                     title = "WiFi 下默认最高音质",
