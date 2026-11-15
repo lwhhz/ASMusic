@@ -3,6 +3,17 @@
 package com.kyant.backdrop.catalog.md3
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.togetherWith
+import com.kyant.backdrop.catalog.appstore.music.PlayMode
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -90,7 +102,6 @@ import kotlinx.coroutines.coroutineScope
 fun Md3SongScreen(
     songId: Long,
     onBack: () -> Unit,
-    onOpenPlayer: () -> Unit,
     onOpenArtist: (Long, String) -> Unit,
     onOpenAlbum: (Long, String) -> Unit,
     onOpenQueue: () -> Unit
@@ -107,7 +118,6 @@ fun Md3SongScreen(
     var showComments by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    // 滚过封面后换成实心顶栏：否则固定的返回键会压在歌词卡上
     val collapsed by remember {
         androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemIndex > 0 }
     }
@@ -128,176 +138,288 @@ fun Md3SongScreen(
     val current = song
     val isCurrent = state.currentSong?.id == songId
     val playing = isCurrent && state.playing
+    val liked = state.likedIds.contains(songId)
     val config = tokens.config
-    val liked = song != null && state.likedIds.contains(songId)
     val scope = rememberCoroutineScope()
+    // 播放中封面缓慢呼吸（设置里可关）
+    val breath = if (config?.breathingCover != false && playing) {
+        val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "breath")
+        t.animateFloat(
+            initialValue = .982f,
+            targetValue = 1.008f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(5600),
+                androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "breath-scale"
+        ).value
+    } else 1f
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(tokens.gap(18))
+            verticalArrangement = Arrangement.spacedBy(tokens.gap(16))
         ) {
-            // ---- 封面 + 渐变 ----
+            // ---- 封面 ----
             item {
-                Box(Modifier.fillMaxWidth()) {
-                    Md3CoverBackdrop(current?.coverUrl, Modifier.fillMaxWidth().height(420.dp), darken = .2f)
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = .55f),
+                                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .55f),
+                                    MaterialTheme.colorScheme.surface
+                                )
+                            )
+                        )
+                ) {
+                    // 顶部压暗：状态栏图标压在浅色渐变上也能看清
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(md3TopInset() + 72.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.scrim.copy(alpha = .22f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
                     Column(
-                        Modifier.fillMaxWidth().padding(top = md3TopInset() + 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = md3TopInset() + 16.dp, bottom = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Md3Cover(
                             current?.coverUrl,
-                            Modifier.fillMaxWidth(.62f).aspectRatio(1f),
+                            Modifier
+                                .fillMaxWidth(.66f)
+                                .aspectRatio(1f)
+                                .graphicsLayer {
+                                    scaleX = breath
+                                    scaleY = breath
+                                }
+                                .shadow(
+                                    elevation = 18.dp,
+                                    shape = MaterialTheme.shapes.extraLarge,
+                                    ambientColor = MaterialTheme.colorScheme.scrim,
+                                    spotColor = MaterialTheme.colorScheme.scrim
+                                ),
                             shape = MaterialTheme.shapes.extraLarge
                         )
                     }
                 }
             }
 
-            // ---- 标题区 ----
+            // ---- 标题 ----
             item {
-                Column(Modifier.padding(horizontal = 20.dp)) {
-                    Text(
-                        current?.name ?: "加载中…",
-                        style = MaterialTheme.typography.headlineMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            current?.artist ?: "",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .md3Clickable(scaleTo = .97f) {
-                                    val id = current?.artistId ?: 0L
-                                    if (id > 0) onOpenArtist(id, current?.artist.orEmpty())
-                                }
-                                .padding(vertical = 2.dp)
+                            current?.name ?: "加载中…",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        if (current?.album?.isNotBlank() == true) {
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "  ·  ${current.album}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                current?.artist.orEmpty(),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .md3SurfaceClick(
+                                        onClick = {
+                                            val id = current?.artistId ?: 0L
+                                            if (id > 0) onOpenArtist(id, current?.artist.orEmpty())
+                                        },
+                                        shape = CircleShape,
+                                        scaleTo = .97f
+                                    )
+                                    .padding(vertical = 2.dp, horizontal = 2.dp)
                             )
+                            if (current?.album?.isNotBlank() == true) {
+                                Text(
+                                    " · ${current.album}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .md3SurfaceClick(
+                                            onClick = {
+                                                val id = current?.albumId ?: 0L
+                                                if (id > 0) onOpenAlbum(id, current?.album.orEmpty())
+                                            },
+                                            shape = CircleShape,
+                                            scaleTo = .97f
+                                        )
+                                )
+                            }
                         }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    if (state.currentQuality != null && isCurrent) {
+                        Md3Badge(state.currentQuality!!.shortLabel)
                     }
                 }
             }
 
-            // ---- 操作行 ----
+            // ---- 进度（只有正在播放的这首才有意义） ----
+            if (isCurrent && state.durationMs > 0) {
+                item {
+                    Column(Modifier.padding(horizontal = 20.dp)) {
+                        Md3WavySeekBar(
+                            positionMs = state.positionMs,
+                            durationMs = state.durationMs,
+                            playing = state.playing,
+                            onSeek = { bridge.seek(it) },
+                            wavy = config?.seekStyle != SeekStyle.Linear
+                        )
+                    }
+                }
+            }
+
+            // ---- 传输控制：居中三个，不再和模式/队列抢宽度 ----
             item {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Md3ButtonGroup(spacing = 18.dp) {
+                        Md3IconButton(
+                            Icons.Rounded.SkipPrevious,
+                            contentDescription = "上一首",
+                            onClick = { bridge.previous() },
+                            size = 52.dp,
+                            iconSize = 26.dp,
+                            tonal = true
+                        )
+                        Md3PlayFab(
+                            playing = playing,
+                            isCurrent = isCurrent,
+                            onClick = {
+                                if (isCurrent) bridge.toggle()
+                                else if (current != null) bridge.play(current)
+                            }
+                        )
+                        Md3IconButton(
+                            Icons.Rounded.SkipNext,
+                            contentDescription = "下一首",
+                            onClick = { bridge.next() },
+                            size = 52.dp,
+                            iconSize = 26.dp,
+                            tonal = true
+                        )
+                    }
+                }
+            }
+
+            // ---- 次操作 ----
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Md3Button(
-                        onClick = {
-                            if (current != null) {
-                                if (isCurrent) bridge.toggle() else bridge.play(current)
-                            }
+                    Md3SplitButton(
+                        text = when (state.playMode) {
+                            PlayMode.Shuffle -> "随机"
+                            PlayMode.RepeatOne -> "单曲"
+                            PlayMode.LoopAll -> "循环"
+                            else -> "顺序"
                         },
-                        text = if (playing) "暂停" else "播放",
-                        icon = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        size = Md3Size.S,
-                        modifier = Modifier.weight(1f)
+                        onClick = {
+                            bridge.setPlayMode(
+                                when (state.playMode) {
+                                    PlayMode.LoopAll -> PlayMode.Shuffle
+                                    PlayMode.Shuffle -> PlayMode.RepeatOne
+                                    else -> PlayMode.LoopAll
+                                }
+                            )
+                        },
+                        actions = listOf(
+                            "列表循环" to { bridge.setPlayMode(PlayMode.LoopAll) },
+                            "单曲循环" to { bridge.setPlayMode(PlayMode.RepeatOne) },
+                            "随机播放" to { bridge.setPlayMode(PlayMode.Shuffle) }
+                        ),
+                        icon = when (state.playMode) {
+                            PlayMode.Shuffle -> Icons.Rounded.Shuffle
+                            PlayMode.RepeatOne -> Icons.Rounded.RepeatOne
+                            else -> Icons.Rounded.Repeat
+                        },
+                        size = Md3Size.XS,
+                        tonal = true
                     )
-                    Md3IconButton(
-                        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = if (liked) "取消喜欢" else "喜欢",
+                    Md3SplitButton(
+                        text = if (liked) "已喜欢" else "喜欢",
                         onClick = {
-                            val id = current?.id
-                            if (id != null) {
-                                scope.launch { runCatching { bridge.likeSong(id, !liked) } }
-                            }
+                            scope.launch { runCatching { bridge.likeSong(songId, !liked) } }
                         },
-                        selected = liked,
+                        actions = listOf(
+                            (if (liked) "取消喜欢" else "喜欢这首歌") to {
+                                scope.launch { runCatching { bridge.likeSong(songId, !liked) } }
+                            },
+                            "分享歌词海报" to { current?.let { bridge.shareLyricPoster(it, null, null) } }
+                        ),
+                        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        size = Md3Size.XS,
+                        tonal = true,
+                        trailingLabel = "喜欢的更多操作"
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Md3IconButton(
+                        Icons.Rounded.QueueMusic,
+                        contentDescription = "播放队列",
+                        onClick = onOpenQueue,
+                        size = 40.dp,
+                        iconSize = 19.dp,
                         tonal = true
                     )
                     Md3IconButton(
                         Icons.Rounded.GraphicEq,
-                        contentDescription = "打开播放页",
-                        onClick = {
-                            if (current != null) {
-                                if (!isCurrent) bridge.play(current)
-                                onOpenPlayer()
-                            }
-                        },
-                        tonal = true
-                    )
-                    Md3IconButton(
-                        Icons.Rounded.MoreVert,
-                        contentDescription = "音质与更多",
+                        contentDescription = "音质",
                         onClick = { if (qualities.isNotEmpty()) showQuality = true },
+                        size = 40.dp,
+                        iconSize = 19.dp,
                         tonal = true
                     )
                 }
             }
 
-            // ---- 歌词与信息：顺序由「歌词优先 / 封面优先」决定 ----
-            val lyricsBlock: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
-                if (lyrics.isNotEmpty()) {
-                    item {
-                        Md3LyricCard(
-                            lines = lyrics,
-                            positionMs = if (isCurrent) state.positionMs else 0L,
-                            showTranslation = config?.showLyricTranslation ?: true,
-                            onSeek = {
-                                if (isCurrent) bridge.seek(it)
-                                else if (current != null) bridge.play(current)
-                            }
-                        )
-                    }
-                }
-            }
-            val infoBlock: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
+            // ---- 歌词 ----
+            if (lyrics.isNotEmpty()) {
                 item {
-                    Column(Modifier.padding(horizontal = 16.dp)) {
-                        Md3SectionTitle("歌曲信息")
-                        Surface(
-                            shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Md3InfoRow("专辑", current?.album ?: "—")
-                                Md3InfoRow("时长", md3Time(current?.durationMs ?: 0))
-                                val br = state.currentQuality?.bitrate ?: 0
-                                Md3InfoRow("码率", if (br > 0) "$br kbps" else "—")
-                                Md3InfoRow(
-                                    "音质",
-                                    state.currentQuality?.label ?: "${qualityLabel(state.wifiQuality)}（上限）"
-                                )
-                                Md3InfoRow("来源", if (state.directMode) "直连" else "代理")
-                            }
+                    Md3LyricCard(
+                        lines = lyrics,
+                        positionMs = if (isCurrent) state.positionMs else 0L,
+                        showTranslation = config?.showLyricTranslation ?: true,
+                        onSeek = {
+                            if (isCurrent) bridge.seek(it)
+                            else if (current != null) bridge.play(current)
                         }
-                    }
-                }
-            }
-            when (config?.detailLayout ?: DetailLayout.LyricsFirst) {
-                DetailLayout.LyricsFirst -> {
-                    lyricsBlock()
-                    infoBlock()
-                }
-                DetailLayout.CoverFirst -> {
-                    infoBlock()
-                    lyricsBlock()
+                    )
                 }
             }
 
             // ---- 评论 ----
             item {
-                Column(Modifier.padding(horizontal = 16.dp)) {
+                Column(Modifier.padding(horizontal = 20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Md3SectionTitle("评论", Modifier.weight(1f))
                         if (comments.isNotEmpty()) {
@@ -312,7 +434,7 @@ fun Md3SongScreen(
                     if (comments.isEmpty()) {
                         Surface(
                             shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            color = MaterialTheme.colorScheme.surfaceContainer,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
@@ -329,9 +451,38 @@ fun Md3SongScreen(
                     }
                 }
             }
+
+            // ---- 歌曲信息 ----
+            item {
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    Md3SectionTitle("歌曲信息")
+                    Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Md3InfoRow("专辑", current?.album ?: "—")
+                            Md3InfoRow("时长", md3Time(current?.durationMs ?: 0))
+                            val br = if (isCurrent) state.currentQuality?.bitrate ?: 0 else 0
+                            Md3InfoRow("码率", if (br > 0) "$br kbps" else "—")
+                            Md3InfoRow(
+                                "音质",
+                                if (isCurrent) state.currentQuality?.label
+                                    ?: "${qualityLabel(state.wifiQuality)}（上限）"
+                                else "${qualityLabel(state.wifiQuality)}（上限）"
+                            )
+                            Md3InfoRow("来源", if (state.directMode) "直连" else "代理")
+                        }
+                    }
+                }
+            }
         }
 
-        // ---- 顶栏：滚过封面后出现（避免返回键压在歌词上） ----
+        // ---- 顶栏：滚过封面后出现 ----
         androidx.compose.animation.AnimatedVisibility(
             visible = collapsed,
             enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
@@ -352,17 +503,23 @@ fun Md3SongScreen(
             }
         }
 
-        if (!collapsed) Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = .92f),
-            modifier = Modifier
-                .padding(start = 12.dp, top = md3TopInset() + 8.dp)
-                .size(40.dp)
-                .clip(CircleShape)
-                .md3SurfaceClick(onClick = onBack, shape = CircleShape, scaleTo = .94f)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.ArrowBack, contentDescription = "返回", modifier = Modifier.size(20.dp))
+        if (!collapsed) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = .82f),
+                modifier = Modifier
+                    .padding(start = 12.dp, top = md3TopInset() + 8.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .md3SurfaceClick(onClick = onBack, shape = CircleShape, scaleTo = .94f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Rounded.ArrowBack,
+                        contentDescription = "返回",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
@@ -377,31 +534,121 @@ fun Md3SongScreen(
     }
     if (showQuality) {
         ModalBottomSheet(onDismissRequest = { showQuality = false }) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
                 Text("选择音质", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (state.directMode) "当前为直连模式" else "当前走代理",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(14.dp))
                 qualities.forEach { q ->
+                    val selected = state.currentQuality?.level == q.level
                     Row(
-                        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
-                            .md3Clickable { bridge.setPlaybackQuality(q.level); showQuality = false }
-                            .padding(12.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .12f)
+                                else MaterialTheme.colorScheme.surfaceContainer
+                            )
+                            .md3SurfaceClick(
+                                onClick = {
+                                    bridge.setPlaybackQuality(q.level)
+                                    if (!isCurrent && current != null) bridge.play(current)
+                                    showQuality = false
+                                    bridge.showToast("已切到 ${q.label}")
+                                },
+                                shape = MaterialTheme.shapes.medium,
+                                scaleTo = .99f
+                            )
+                            .padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(q.label, style = MaterialTheme.typography.titleSmall)
                             Text(
-                                if (q.playable) "${q.bitrate} kbps" else "需要会员",
+                                q.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                if (q.playable) "${q.bitrate} kbps" else "${q.bitrate} kbps · 需要会员",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        if (state.currentQuality?.level == q.level) {
-                            Icon(Icons.Rounded.GraphicEq, null, tint = MaterialTheme.colorScheme.primary)
-                        }
+                        if (selected) Md3Badge("当前")
                     }
+                    Spacer(Modifier.height(6.dp))
                 }
-                Spacer(Modifier.height(20.dp))
             }
+        }
+    }
+}
+
+/**
+ * 主播放键：Expressive 的形状 morph。
+ *
+ * 静止是正圆，按下收成 26dp 圆角并缩到 0.93；播放/暂停切换走 scale + fade，
+ * 而不是直接换图标（避免"闪一下"）。
+ */
+@Composable
+private fun Md3PlayFab(playing: Boolean, isCurrent: Boolean, onClick: () -> Unit) {
+    val tokens = LocalMd3Tokens.current
+    val haptics = LocalHapticFeedback.current
+    val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val corner by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (pressed) 20.dp else 34.dp,
+        animationSpec = tokens.springDp,
+        label = "play-corner"
+    )
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (pressed) .93f else 1f,
+        animationSpec = tokens.spring,
+        label = "play-scale"
+    )
+    Box(
+        Modifier
+            .size(68.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(corner))
+            .background(MaterialTheme.colorScheme.primary)
+            .clickable(
+                role = androidx.compose.ui.semantics.Role.Button,
+                interactionSource = source,
+                indication = null,
+                onClick = {
+                    if (tokens.haptics) {
+                        runCatching { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+                    }
+                    onClick()
+                }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.animation.AnimatedContent(
+            targetState = playing,
+            transitionSpec = {
+                (androidx.compose.animation.scaleIn(initialScale = .5f) +
+                    androidx.compose.animation.fadeIn()) togetherWith
+                    (androidx.compose.animation.scaleOut(targetScale = .5f) +
+                        androidx.compose.animation.fadeOut())
+            },
+            label = "play-icon"
+        ) { isPlaying ->
+            Icon(
+                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = if (isPlaying) "暂停" else "播放",
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(32.dp)
+            )
         }
     }
 }

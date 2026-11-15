@@ -119,7 +119,7 @@ fun Md3HomeScreen(
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = md3ListBottom()),
         verticalArrangement = Arrangement.spacedBy(tokens.gap(18))
     ) {
         item {
@@ -137,30 +137,7 @@ fun Md3HomeScreen(
                     iconSize = 20.dp
                 )
                 Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .md3SurfaceClick(onClick = onOpenSettings, shape = CircleShape, scaleTo = .94f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val avatar = state.avatarUrl
-                    if (!avatar.isNullOrBlank()) {
-                        Md3Cover(avatar, Modifier.fillMaxSize(), shape = CircleShape)
-                    } else {
-                        Box(
-                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Rounded.LibraryMusic,
-                                contentDescription = "设置",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
+                Md3AvatarButton(state.avatarUrl, "设置", onOpenSettings)
             }
         }
 
@@ -469,6 +446,8 @@ fun Md3DiscoverScreen(
     onOpenPlaylist: (Long, String) -> Unit,
     onOpenAlbum: (Long, String) -> Unit,
     onOpenSong: (Long) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenSearch: () -> Unit,
     scroll: LazyListState = rememberLazyListState()
 ) {
     val bridge = MusicServices.bridge
@@ -494,11 +473,22 @@ fun Md3DiscoverScreen(
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = md3ListBottom()),
         verticalArrangement = Arrangement.spacedBy(tokens.gap(16))
     ) {
         item {
-            Md3PageHeader(title = "发现", subtitle = "新上架的专辑、最热的榜单")
+            Md3PageHeader(title = "发现", subtitle = "新上架的专辑、最热的榜单") {
+                Md3IconButton(
+                    Icons.Rounded.Search,
+                    contentDescription = "搜索",
+                    onClick = onOpenSearch,
+                    size = 44.dp,
+                    tonal = true,
+                    iconSize = 20.dp
+                )
+                Spacer(Modifier.width(8.dp))
+                Md3AvatarButton(state.avatarUrl, "设置", onOpenSettings)
+            }
         }
 
         if (albums.isNotEmpty()) {
@@ -650,7 +640,7 @@ fun Md3LibraryScreen(
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = md3ListBottom()),
         verticalArrangement = Arrangement.spacedBy(tokens.gap(12))
     ) {
         item {
@@ -667,29 +657,7 @@ fun Md3LibraryScreen(
                     iconSize = 20.dp
                 )
                 Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .md3SurfaceClick(onClick = onOpenSettings, shape = CircleShape, scaleTo = .94f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val avatar = state.avatarUrl
-                    if (!avatar.isNullOrBlank()) {
-                        Md3Cover(avatar, Modifier.fillMaxSize(), shape = CircleShape)
-                    } else {
-                        Box(
-                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Rounded.LibraryMusic,
-                                contentDescription = "设置",
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
+                Md3AvatarButton(state.avatarUrl, "设置", onOpenSettings)
             }
         }
 
@@ -843,7 +811,7 @@ fun Md3StatsScreen(
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = md3ListBottom()),
         verticalArrangement = Arrangement.spacedBy(tokens.gap(14))
     ) {
         item {
@@ -1025,13 +993,13 @@ fun Md3SearchScreen(
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = md3ListBottom()),
         verticalArrangement = Arrangement.spacedBy(tokens.gap(10))
     ) {
         item {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Md3PageHeader(title = "搜索", subtitle = "歌曲、歌手、专辑")
-            }
+            // 不要在外面再包一层 16dp：Md3PageHeader 自己已经有 16dp 内边距，
+            // 再包一层会让标题比其它页面多缩进 16dp（之前就是这样）。
+            Md3PageHeader(title = "搜索", subtitle = "歌曲、歌手、专辑")
         }
         item {
             // 自绘搜索框：之前用 SearchBar 套 TextField，expanded 恒为 false，

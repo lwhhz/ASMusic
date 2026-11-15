@@ -375,6 +375,18 @@ fun Md3Theme(
         DarkMode.Dark -> true
     }
 
+    // 状态栏图标颜色必须跟着**实际主题**走：MD3 可以强制「常亮/常暗」，
+    // 与系统深色状态并不一致。不设的话浅色主题下白色图标会看不见。
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) {
+        androidx.compose.runtime.SideEffect {
+            val window = (view.context as? android.app.Activity)?.window ?: return@SideEffect
+            val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !dark
+            controller.isAppearanceLightNavigationBars = !dark
+        }
+    }
+
     val scheme = remember(seed, dark, config.schemeStyle, config.contrast, config.pureBlack) {
         schemeFromSeed(seed, dark, config.schemeStyle, config.contrast, config.pureBlack)
     }

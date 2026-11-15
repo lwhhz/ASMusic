@@ -858,11 +858,8 @@ private fun PlaybackPage(config: Md3Config, onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                     )
                     Spacer(Modifier.height(12.dp))
-                    SettingsSwitch("呼吸封面", "播放时封面缓慢缩放", config.breathingCover) {
+                    SettingsSwitch("呼吸封面", "播这首歌时，详情页封面缓慢缩放", config.breathingCover) {
                         config.breathingCover = it
-                    }
-                    SettingsSwitch("进入即展开歌词", "打开播放页时直接弹歌词面板", config.playerStartLyrics) {
-                        config.playerStartLyrics = it
                     }
                 }
             }
@@ -872,9 +869,6 @@ private fun PlaybackPage(config: Md3Config, onBack: () -> Unit) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                     SettingsSwitch("显示翻译", "有机器翻译时显示在原文下方", config.showLyricTranslation) {
                         config.showLyricTranslation = it
-                    }
-                    SettingsSwitch("内嵌界面显示波浪进度", "迷你播放条底部的动效", config.showWaveform) {
-                        config.showWaveform = it
                     }
                 }
             }

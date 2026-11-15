@@ -209,12 +209,14 @@ fun Md3MediaCard(
     width: Dp = 156.dp
 ) {
     val tokens = LocalMd3Tokens.current
+    // 只裁封面，不裁整个卡片：把文字放进被 clip 的 Column 里时，
+    // 底部一行的左右两端会被大圆角切掉（用户看到的「文字被圆角裁切」）。
     Column(
         modifier
             .width(width)
-            .clip(MaterialTheme.shapes.large)
+            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .md3Clickable(onClick = onClick)
-            .padding(bottom = tokens.gap(6))
+            .padding(bottom = tokens.gap(8))
     ) {
         Box {
             Md3Cover(
@@ -518,11 +520,11 @@ fun Md3MiniPlayer(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .md3SurfaceClick(onClick = onOpen, shape = MaterialTheme.shapes.large, scaleTo = .99f),
+            .clip(RoundedCornerShape(20.dp))
+            .md3SurfaceClick(onClick = onOpen, shape = RoundedCornerShape(20.dp), scaleTo = .99f),
         color = colors.surfaceContainerHigh,
-        tonalElevation = 3.dp,
-        shape = MaterialTheme.shapes.large
+        tonalElevation = 4.dp,
+        shape = RoundedCornerShape(20.dp)
     ) {
         Column {
             Row(
@@ -557,26 +559,23 @@ fun Md3MiniPlayer(
                     Icon(Icons.Rounded.SkipNext, contentDescription = "下一首", tint = colors.onSurface)
                 }
             }
-            if (LocalMd3Tokens.current.config?.showWaveform != false) {
-                Md3WaveProgress(
-                    progress = progress,
-                    playing = state.playing,
-                    modifier = Modifier.padding(horizontal = 10.dp).padding(bottom = 6.dp),
-                    waveHeight = 2.dp
-                )
-            } else {
+            // 迷你条里的进度用**标准线性指示器**（4dp、圆角端帽、无起伏）。
+            // 波形（wavy）是 Expressive 的进度表达，规范要求 ≥4dp 且需要振幅空间；
+            // 塞进 2dp 的细条里会变成一串抖动的小点，既不合规范也看不清。
+            // 留白要大于圆角半径，否则进度条两端会被胶囊的圆角切掉
+            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 9.dp, top = 1.dp)) {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                        .height(2.dp)
+                        .height(4.dp)
                         .clip(CircleShape)
-                        .background(colors.onSurface.copy(alpha = .18f))
+                        .background(colors.onSurface.copy(alpha = .16f))
                 ) {
                     Box(
                         Modifier
                             .fillMaxWidth(progress.coerceIn(0f, 1f))
                             .fillMaxSize()
+                            .clip(CircleShape)
                             .background(colors.primary)
                     )
                 }

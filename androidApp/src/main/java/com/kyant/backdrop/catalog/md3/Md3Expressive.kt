@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.asPaddingValues
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -1115,3 +1117,33 @@ private fun Modifier.minimumTouchTarget(): Modifier = this.minimumInteractiveCom
 /** 状态栏高度（dp）。列表用它做 contentPadding，让内容滚动时能钻到状态栏下面。 */
 @Composable
 fun md3TopInset(): Dp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+
+/** 顶栏右侧的头像入口：没登录时显示占位图标。 */
+@Composable
+fun Md3AvatarButton(url: String?, contentDescription: String, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .md3SurfaceClick(onClick = onClick, shape = CircleShape, scaleTo = .94f),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!url.isNullOrBlank()) {
+            Md3Cover(url, Modifier.fillMaxSize(), shape = CircleShape)
+        } else {
+            Box(
+                Modifier.fillMaxSize().background(colors.surfaceContainerHigh),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Rounded.Person,
+                    contentDescription = contentDescription,
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}

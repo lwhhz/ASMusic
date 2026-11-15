@@ -173,8 +173,6 @@ class Md3Config(context: Context) {
     // ---- 播放页 ----
     private val breathingCoverS = BoolSetting("breathing_cover", true)
     private val seekStyleS = IntSetting("seek_style", SeekStyle.Wavy.ordinal, 0..1)
-    private val startLyricsS = BoolSetting("player_start_lyrics", false)
-    private val showWaveformS = BoolSetting("waveform", true)
 
     var schemeStyle: SchemeStyle
         get() = SchemeStyle.from(schemeStyleS.read())
@@ -271,14 +269,6 @@ class Md3Config(context: Context) {
         get() = SeekStyle.from(seekStyleS.read())
         set(v) = seekStyleS.write(v.ordinal)
 
-    var playerStartLyrics: Boolean
-        get() = startLyricsS.read()
-        set(v) = startLyricsS.write(v)
-
-    var showWaveform: Boolean
-        get() = showWaveformS.read()
-        set(v) = showWaveformS.write(v)
-
     // -----------------------------------------------------------------------
     // 分组重置
     // -----------------------------------------------------------------------
@@ -313,8 +303,6 @@ class Md3Config(context: Context) {
     fun resetPlayer() {
         breathingCover = true
         seekStyle = SeekStyle.Wavy
-        playerStartLyrics = false
-        showWaveform = true
         showLyricTranslation = true
     }
 
