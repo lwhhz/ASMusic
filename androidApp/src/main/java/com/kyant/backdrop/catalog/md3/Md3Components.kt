@@ -89,6 +89,20 @@ fun md3Count(n: Int): String = when {
     else -> String.format("%.1f亿", n / 100_000_000.0)
 }
 
+/**
+ * 去掉 LRC 行首的时间戳。
+ *
+ * 有些音源（脚本回退到纯 LRC 时）返回的 text 里带着 [00:15.20]，
+ * 直接渲染会把时间戳显示进歌词。这里统一清洗；纯时间轴行返回空串，
+ * 由调用方退化成「♪」。
+ */
+private val LrcTag = Regex("^\\s*(\\[\\d{1,3}:\\d{1,2}([.:]\\d{1,3})?\\])+")
+
+fun cleanLyric(text: String): String {
+    val stripped = text.replace(LrcTag, "").trim()
+    return if (stripped.length < text.trim().length) stripped else text.trim()
+}
+
 fun md3Time(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
     val m = total / 60
@@ -108,22 +122,12 @@ fun Modifier.md3Clickable(
     enabled: Boolean = true,
     scaleTo: Float = .965f,
     onClick: () -> Unit
-): Modifier {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (pressed && enabled) scaleTo else 1f,
-        label = "press-scale"
-    )
-    return this
-        .scale(scale)
-        .clickable(
-            enabled = enabled,
-            interactionSource = interaction,
-            indication = null,
-            onClick = onClick
-        )
-}
+): Modifier = md3SurfaceClick(
+    onClick = onClick,
+    shape = androidx.compose.ui.graphics.RectangleShape,
+    enabled = enabled,
+    scaleTo = scaleTo
+)
 
 // ---------------------------------------------------------------------------
 // 封面
@@ -143,7 +147,9 @@ fun Md3Cover(
             bridge.image(url, 512)
         }.getOrNull()
     }
-    val resolvedShape = shape ?: RoundedCornerShape(corner ?: 12.dp)
+    val coverCorner = LocalMd3Tokens.current.config?.coverCorner ?: true
+    val defaultCorner = if (coverCorner) 12.dp else 0.dp
+    val resolvedShape = shape ?: RoundedCornerShape(corner ?: defaultCorner)
     Box(
         modifier
             .clip(resolvedShape)
@@ -513,7 +519,7 @@ fun Md3MiniPlayer(
         modifier = modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
-            .clickable(onClick = onOpen),
+            .md3SurfaceClick(onClick = onOpen, shape = MaterialTheme.shapes.large, scaleTo = .99f),
         color = colors.surfaceContainerHigh,
         tonalElevation = 3.dp,
         shape = MaterialTheme.shapes.large
@@ -551,12 +557,30 @@ fun Md3MiniPlayer(
                     Icon(Icons.Rounded.SkipNext, contentDescription = "下一首", tint = colors.onSurface)
                 }
             }
-            Md3WaveProgress(
-                progress = progress,
-                playing = state.playing,
-                modifier = Modifier.padding(horizontal = 10.dp).padding(bottom = 6.dp),
-                waveHeight = 2.dp
-            )
+            if (LocalMd3Tokens.current.config?.showWaveform != false) {
+                Md3WaveProgress(
+                    progress = progress,
+                    playing = state.playing,
+                    modifier = Modifier.padding(horizontal = 10.dp).padding(bottom = 6.dp),
+                    waveHeight = 2.dp
+                )
+            } else {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .height(2.dp)
+                        .clip(CircleShape)
+                        .background(colors.onSurface.copy(alpha = .18f))
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                            .fillMaxSize()
+                            .background(colors.primary)
+                    )
+                }
+            }
         }
     }
 }

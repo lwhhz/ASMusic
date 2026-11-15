@@ -108,13 +108,65 @@ python scripts/align-elf-16kb.py --check androidApp/src/main/jniLibs/arm64-v8a/l
 | 经典（iOS） | 毛玻璃、胶囊、大字标题；原有的界面与设置 | 设置 → 维护 → 界面风格 |
 | Material 3 | `androidApp/.../md3/`：语义色 + 动态取色 + 弹簧动效 | 设置 → 界面风格 |
 
-Material 3 那套是独立实现，不复用经典界面的布局：
+Material 3 那套是独立实现，不复用经典界面的布局。
 
-- **主题引擎**：种子色 → OKLCH → 26 个语义角色（含 5 档 surface 容器），支持 6 种配色风格、3 种取色来源（跟随封面 / 手动调色相彩度 / 10 色预设）、3 档对比度、纯黑背景。
-- **形状与排版**：圆润度（0–100 驱动 5 档圆角）、布局密度、字号缩放、3 档动效（标准 / 表达力 / 关闭）。
-- **布局**：底部导航栏 / 侧边导航轨（按宽度自动切换）、首页卡片密度、播放页歌词优先或封面优先、迷你播放条开关。
-- **图标**：全部来自官方 `androidx.compose.material:material-icons-extended`（Apache-2.0），没有自绘图标。
-- **配置隔离**：MD3 的设置单独存在 `md3_app.xml`，与经典界面的 `music_app.xml` 互不影响。
+**主题引擎**
+
+- 种子色 → OKLCH → 26 个语义角色（含 5 档 surface 容器），超出色域时降 chroma 而不是截断。
+- 6 种配色风格、3 种取色来源（跟随封面 / 手动调色相彩度 / 10 色预设）、3 档对比度、AMOLED 纯黑。
+- 设置项全部是 Compose 快照状态：改完立刻重组生效，**不需要重启**（切换界面风格才需要）。
+
+**Expressive 组件（自实现）**
+
+`material3 1.4.0` 只提供了 `MaterialExpressiveTheme` 与 motion scheme，
+组件层（ButtonGroup / FAB menu / FloatingToolbar / WavyProgress / SplitButton / LoadingIndicator）
+在这一版还不存在，所以按官方 token 自己实现了一套，放在 `md3/Md3Expressive.kt`：
+
+| 组件 | 尺寸 / 形状依据 |
+|---|---|
+| 按钮（5 档） | 高 32 / 40 / 56 / 96 / 136dp，圆角 12/12/16/28/28，**按下变方**（8/8/12/16/16） |
+| Connected button group | 外侧整圆、内侧 4dp，选中段填充 + 对勾 + 药丸 |
+| Split button | 两段之间 2dp，后缀恒为菜单图标 |
+| FAB menu | 关闭态固定 56dp，展开一组带文字的动作 |
+| Wavy progress / seek | 播放时波峰流动，暂停收成直线；拖动时定住 |
+| Loading indicator | 38dp 可见形状 / 48dp 占位，圆形↔四角星 morph |
+| Floating toolbar | 收起是单个 FAB，展开是一排操作 |
+
+**播放页**（全部用上面的组件）
+
+- 播放键形状 morph：静止 44dp 圆 → 按下收成 26dp 圆角；播放/暂停走 scale + fade。
+- 上一首 / 下一首是 standard button group，按下时组内间距从 12 收到 2。
+- 播放模式与「喜欢」用 split button：左执行、右展开；喜欢有真实状态（读 `likedIds`）。
+- 进度条是波形，拖动时定住不发请求；整页支持下拉关闭。
+- 歌词从底部半屏推上来，当前行高亮 + 自动居中 + 点行跳转。
+
+**设置**（分类，不再是一页平铺）
+
+```
+设置
+├── 账号
+├── 界面风格（经典 / Material 3，切换即重启）
+├── 搜索设置
+├── 外观 ── 配色（风格 / 取色来源 / 明暗 / 对比度，带实时预览）
+│          形状与排版（圆角预览、密度、字号，带字号示例）
+│          动效（可点的弹簧预览 + 触觉开关）
+│          布局（导航 / 首页 / 详情 / 标题栏，各带示意图）
+├── 播放 ── 音质（Wi-Fi / 移动）、播放模式、进度条样式、呼吸封面、歌词
+├── 音源 ── 直连开关、脚本导入 / 启用 / 删除（删除有确认）
+├── 存储 ── 三类缓存占用、分项清理（有确认）、音频缓存上限
+└── 关于与维护 ── 全面自检、重启、分组重置
+```
+
+父页每行右侧显示当前值摘要，二级页返回回到自己的父页；每组都有「恢复默认值」。
+
+**交互约定**
+
+- 所有可点区域都走 `md3SurfaceClick`：状态层（按下 12% / 悬停 6%）+ 轻微收缩 + 触觉反馈，
+  不再是「点了没反应」。
+- 页面自己吃状态栏内边距，`Scaffold` 不再接管 `contentWindowInsets` —— 这是上一版
+  「顶部一块空白顶栏占位」的根因。
+- 图标全部来自官方 `androidx.compose.material:material-icons-extended`（Apache-2.0）。
+- 配置隔离：MD3 的设置存在 `md3_app.xml`，与经典界面的 `music_app.xml` 互不影响。
 
 > 依赖说明：Material 3 用 `androidx.compose.material3:material3:1.4.0`，并用
 > `resolutionStrategy` 把 compose 系依赖统一到 1.12.1（与本工程 CMP 1.12.2 对齐）。

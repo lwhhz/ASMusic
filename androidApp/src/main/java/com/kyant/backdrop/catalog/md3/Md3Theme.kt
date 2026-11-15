@@ -35,9 +35,9 @@ import kotlin.math.sin
 // 用 OKLCH 而不是 HSL：OKLCH 的 L 是感知亮度，等步长的 tone 看起来才均匀。
 // ---------------------------------------------------------------------------
 
-private data class Oklch(val l: Double, val c: Double, val h: Double)
+internal data class Oklch(val l: Double, val c: Double, val h: Double)
 
-private fun Color.toOklch(): Oklch {
+internal fun Color.toOklch(): Oklch {
     fun lin(v: Float): Double {
         val s = v.toDouble()
         return if (s <= 0.04045) s / 12.92 else ((s + 0.055) / 1.055).pow(2.4)
@@ -188,7 +188,8 @@ fun schemeFromSeed(
         )
     } else {
         val surfaceTone = if (pureBlack) 0f else 6f
-        val cLow = if (pureBlack) 3f else 10f
+        // 纯黑时也要留出可见的层次：3% 与 #000 几乎无法区分，卡片会整片消失
+        val cLow = if (pureBlack) 6f else 10f
         darkColorScheme(
             primary = primary.tone(80f + 8f * c),
             onPrimary = primary.tone(24f - 8f * c),
@@ -280,7 +281,9 @@ data class Md3Tokens(
     val density: Float,
     val motion: MotionLevel,
     val config: Md3Config?,
-    val wide: Boolean
+    val wide: Boolean,
+    /** 触觉反馈开关（设置里可关）。 */
+    val haptics: Boolean = true
 ) {
     /** 默认间距乘以密度系数。 */
     fun gap(dp: Int) = (dp * density).dp
@@ -294,10 +297,22 @@ data class Md3Tokens(
             )
             MotionLevel.Off -> androidx.compose.animation.core.tween(0)
         }
+
+    /** 同一条弹簧曲线，但给 Dp 用（圆角/位移）。 */
+    val springDp: androidx.compose.animation.core.FiniteAnimationSpec<androidx.compose.ui.unit.Dp>
+        get() = when (motion) {
+            MotionLevel.Expressive -> androidx.compose.animation.core.spring(
+                dampingRatio = 0.62f, stiffness = 420f
+            )
+            MotionLevel.Standard -> androidx.compose.animation.core.spring(
+                dampingRatio = 0.82f, stiffness = 520f
+            )
+            MotionLevel.Off -> androidx.compose.animation.core.tween(0)
+        }
 }
 
 val LocalMd3Tokens = staticCompositionLocalOf {
-    Md3Tokens(1f, MotionLevel.Expressive, null, false)
+    Md3Tokens(1f, MotionLevel.Expressive, null, false, true)
 }
 
 val LocalMd3Seed = staticCompositionLocalOf { Color(0xFF6750A4) }
@@ -367,8 +382,8 @@ fun Md3Theme(
         md3Typography(config.fontScale, config.motion == MotionLevel.Expressive)
     }
     val shapes = remember(config.roundness) { md3Shapes(config.roundness) }
-    val tokens = remember(config.density, config.motion, config, wide) {
-        Md3Tokens(config.density, config.motion, config, wide)
+    val tokens = remember(config.density, config.motion, config, wide, config.haptics) {
+        Md3Tokens(config.density, config.motion, config, wide, config.haptics)
     }
 
     CompositionLocalProvider(

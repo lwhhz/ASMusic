@@ -17,29 +17,32 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.TrendingUp
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,9 +52,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,7 +79,8 @@ fun Md3HomeScreen(
     onOpenAlbum: (Long, String) -> Unit,
     onOpenArtist: (Long, String) -> Unit,
     onOpenSettings: () -> Unit,
-    scroll: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    onOpenSearch: () -> Unit,
+    scroll: LazyListState = rememberLazyListState()
 ) {
     val bridge = MusicServices.bridge
     val state = MusicServices.state
@@ -108,52 +114,49 @@ fun Md3HomeScreen(
             }
         }
     }
+    val layout = config?.homeLayout ?: HomeLayout.Cards
 
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 196.dp),
-        verticalArrangement = Arrangement.spacedBy(tokens.gap(20))
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(tokens.gap(18))
     ) {
-        // ---- 顶部问候 ----
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = tokens.gap(10)),
-                verticalAlignment = Alignment.CenterVertically
+            Md3PageHeader(
+                title = greeting,
+                subtitle = state.currentSong?.let { "正在听 · ${it.name}" }
+                    ?: "从每日推荐开始，或搜索你想听的歌"
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        greeting,
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            fontSize = 40.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        state.currentSong?.let { "正在听 · ${it.name}" }
-                            ?: "从每日推荐开始，或搜索你想听的歌",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.size(44.dp).clip(CircleShape).md3Clickable(onClick = onOpenSettings)
+                Md3IconButton(
+                    Icons.Rounded.Search,
+                    contentDescription = "搜索",
+                    onClick = onOpenSearch,
+                    size = 44.dp,
+                    tonal = true,
+                    iconSize = 20.dp
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .md3SurfaceClick(onClick = onOpenSettings, shape = CircleShape, scaleTo = .94f),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        val avatar = state.avatarUrl
-                        if (!avatar.isNullOrBlank()) {
-                            Md3Cover(avatar, Modifier.fillMaxSize(), shape = CircleShape)
-                        } else {
+                    val avatar = state.avatarUrl
+                    if (!avatar.isNullOrBlank()) {
+                        Md3Cover(avatar, Modifier.fillMaxSize(), shape = CircleShape)
+                    } else {
+                        Box(
+                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 Icons.Rounded.LibraryMusic,
                                 contentDescription = "设置",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -161,23 +164,21 @@ fun Md3HomeScreen(
             }
         }
 
-        // ---- Hero：每日推荐 ----
+        // Hero：每日推荐
         item {
             val hero = cards.firstOrNull { it.songCount > 0 } ?: cards.firstOrNull()
             Md3HeroCard(
                 playlist = hero,
                 subtitle = if (daily.isNotEmpty()) "${daily.size} 首 · 每天 6:00 更新" else "为你挑选",
                 onPlay = {
-                    if (daily.isNotEmpty()) {
-                        bridge.playFrom(daily, daily.first())
-                    } else if (hero != null) onOpenPlaylist(hero.id, hero.name)
+                    if (daily.isNotEmpty()) bridge.playFrom(daily, daily.first())
+                    else if (hero != null) onOpenPlaylist(hero.id, hero.name)
                 },
                 onOpen = { if (hero != null) onOpenPlaylist(hero.id, hero.name) },
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
 
-        // ---- 快捷入口 ----
         item {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -185,31 +186,39 @@ fun Md3HomeScreen(
             ) {
                 Md3IconTile(Icons.Rounded.AutoAwesome, "每日推荐") {
                     if (daily.isNotEmpty()) bridge.playFrom(daily, daily.first())
+                    else bridge.showToast("每日推荐还在加载")
                 }
                 Md3IconTile(Icons.Rounded.Favorite, "私人漫游") {
                     bridge.enterHeartMode(true)
                 }
                 Md3IconTile(Icons.Rounded.Shuffle, "随机播放") {
                     val pool = daily.ifEmpty { state.recentSongs }
-                    if (pool.isNotEmpty()) bridge.playFrom(pool.shuffled(), pool.shuffled().first())
+                    if (pool.isNotEmpty()) {
+                        val shuffled = pool.shuffled()
+                        bridge.playFrom(shuffled, shuffled.first())
+                    } else {
+                        bridge.showToast("还没有可播放的歌")
+                    }
                 }
                 Md3IconTile(Icons.Rounded.History, "最近播放") {
                     if (state.recentSongs.isNotEmpty()) {
                         bridge.playFrom(state.recentSongs, state.recentSongs.first())
+                    } else {
+                        bridge.showToast("暂无播放记录")
                     }
                 }
             }
         }
 
-        // ---- 为你推荐 ----
         if (cards.isNotEmpty()) {
             item {
-                Column(Modifier.padding(horizontal = 16.dp)) {
-                    Md3SectionHeader("为你推荐", action = "全部") { }
-                }
+                Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("为你推荐") }
             }
             item {
-                Md3Rail {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.gap(12))
+                ) {
                     items(cards.size) { i ->
                         val card = cards[i]
                         Md3MediaCard(card, onClick = { onOpenPlaylist(card.id, card.name) })
@@ -218,40 +227,76 @@ fun Md3HomeScreen(
             }
         }
 
-        // ---- 每日推荐列表 ----
         if (daily.isNotEmpty()) {
             item {
                 Column(Modifier.padding(horizontal = 16.dp)) {
-                    Md3SectionHeader("今日推荐", action = "播放全部") {
-                        bridge.playFrom(daily, daily.first())
-                    }
+                    Md3SectionTitle(
+                        "今日推荐",
+                        action = "播放全部",
+                        onAction = { bridge.playFrom(daily, daily.first()) }
+                    )
                 }
             }
-            itemsIndexed(daily.take(8)) { index, song ->
-                Box(Modifier.padding(horizontal = 8.dp)) {
-                    Md3SongRow(
-                        song = song,
-                        index = index + 1,
-                        isCurrent = state.currentSong?.id == song.id,
-                        playing = state.playing,
-                        onClick = {
-                            bridge.playFrom(daily, song)
-                            onOpenSong(song.id)
+            when (layout) {
+                HomeLayout.Grid -> items(daily.take(8).chunked(2)) { pair ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        pair.forEach { song ->
+                            Md3SongGridCard(
+                                song = song,
+                                isCurrent = state.currentSong?.id == song.id,
+                                playing = state.playing,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                bridge.playFrom(daily, song)
+                                onOpenSong(song.id)
+                            }
                         }
-                    )
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+                HomeLayout.List -> itemsIndexed(daily.take(20)) { index, song ->
+                    Box(Modifier.padding(horizontal = 8.dp)) {
+                        Md3SongRow(
+                            song = song,
+                            index = index + 1,
+                            isCurrent = state.currentSong?.id == song.id,
+                            playing = state.playing,
+                            onClick = {
+                                bridge.playFrom(daily, song)
+                                onOpenSong(song.id)
+                            }
+                        )
+                    }
+                }
+                HomeLayout.Cards -> itemsIndexed(daily.take(8)) { index, song ->
+                    Box(Modifier.padding(horizontal = 8.dp)) {
+                        Md3SongRow(
+                            song = song,
+                            index = index + 1,
+                            isCurrent = state.currentSong?.id == song.id,
+                            playing = state.playing,
+                            onClick = {
+                                bridge.playFrom(daily, song)
+                                onOpenSong(song.id)
+                            }
+                        )
+                    }
                 }
             }
         }
 
-        // ---- 最近播放 ----
         if (state.recentSongs.isNotEmpty()) {
             item {
-                Column(Modifier.padding(horizontal = 16.dp)) {
-                    Md3SectionHeader("最近播放", action = "清空") { }
-                }
+                Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("最近播放") }
             }
             item {
-                Md3Rail {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.gap(12))
+                ) {
                     items(state.recentSongs.take(12)) { song ->
                         Md3RecentCard(song) {
                             bridge.playFrom(state.recentSongs, song)
@@ -285,18 +330,13 @@ private fun Md3HeroCard(
         tonalElevation = 2.dp
     ) {
         Box {
-            Md3CoverBackdrop(playlist?.coverUrl, Modifier.fillMaxSize(), darken = .35f)
+            Md3CoverBackdrop(playlist?.coverUrl, Modifier.fillMaxSize(), darken = .32f)
             Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(18.dp),
+                Modifier.fillMaxSize().padding(18.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Surface(
-                        color = colors.primary.copy(alpha = .18f),
-                        shape = CircleShape
-                    ) {
+                    Surface(color = colors.primary.copy(alpha = .18f), shape = CircleShape) {
                         Text(
                             "FOR YOU",
                             style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
@@ -308,11 +348,13 @@ private fun Md3HeroCard(
                     Spacer(Modifier.height(8.dp))
                     Text(
                         playlist?.name ?: "每日推荐",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp),
+                        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp),
                         color = colors.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clip(MaterialTheme.shapes.small).md3Clickable(scaleTo = .99f, onClick = onOpen)
+                        modifier = Modifier
+                            .clip(MaterialTheme.shapes.small)
+                            .md3SurfaceClick(onClick = onOpen, scaleTo = .99f)
                     )
                     Text(
                         subtitle,
@@ -321,13 +363,19 @@ private fun Md3HeroCard(
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilledTonalButton(onClick = onPlay) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("播放")
-                    }
+                    Md3Button(
+                        onClick = onPlay,
+                        text = "播放",
+                        icon = Icons.Rounded.PlayArrow,
+                        size = Md3Size.S
+                    )
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = onOpen) { Text("查看歌单") }
+                    Md3Button(
+                        onClick = onOpen,
+                        text = "查看歌单",
+                        style = Md3ButtonStyle.Text,
+                        size = Md3Size.S
+                    )
                 }
             }
         }
@@ -340,7 +388,7 @@ private fun Md3RecentCard(song: Song, onClick: () -> Unit) {
         Modifier
             .width(104.dp)
             .clip(MaterialTheme.shapes.medium)
-            .md3Clickable(onClick = onClick)
+            .md3SurfaceClick(onClick = onClick, shape = MaterialTheme.shapes.medium)
     ) {
         Md3Cover(song.coverUrl, Modifier.fillMaxWidth().aspectRatio(1f), corner = 14.dp)
         Spacer(Modifier.height(6.dp))
@@ -360,8 +408,60 @@ private fun Md3RecentCard(song: Song, onClick: () -> Unit) {
     }
 }
 
+@Composable
+private fun Md3SongGridCard(
+    song: Song,
+    isCurrent: Boolean,
+    playing: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier
+            .clip(MaterialTheme.shapes.large)
+            .md3SurfaceClick(onClick = onClick, shape = MaterialTheme.shapes.large, scaleTo = .97f)
+    ) {
+        Box {
+            Md3Cover(song.coverUrl, Modifier.fillMaxWidth().aspectRatio(1f), shape = MaterialTheme.shapes.large)
+            if (isCurrent) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp)
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.PlayArrow,
+                        contentDescription = if (playing) "正在播放" else "已暂停",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            song.name,
+            style = MaterialTheme.typography.titleSmall,
+            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            song.artist,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 // ---------------------------------------------------------------------------
-// 发现（新歌 / 排行榜）
+// 发现
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -369,7 +469,7 @@ fun Md3DiscoverScreen(
     onOpenPlaylist: (Long, String) -> Unit,
     onOpenAlbum: (Long, String) -> Unit,
     onOpenSong: (Long) -> Unit,
-    scroll: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    scroll: LazyListState = rememberLazyListState()
 ) {
     val bridge = MusicServices.bridge
     val state = MusicServices.state
@@ -394,37 +494,32 @@ fun Md3DiscoverScreen(
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 196.dp),
-        verticalArrangement = Arrangement.spacedBy(tokens.gap(18))
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(tokens.gap(16))
     ) {
         item {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = tokens.gap(8))) {
-                Text(
-                    "发现",
-                    style = MaterialTheme.typography.displaySmall.copy(
-                        fontSize = 38.sp, fontWeight = FontWeight.Bold
-                    )
-                )
-                Text(
-                    "新上架的专辑、最热的榜单",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Md3PageHeader(title = "发现", subtitle = "新上架的专辑、最热的榜单")
         }
 
-        // 横向大图专辑
         if (albums.isNotEmpty()) {
-            item { Md3SectionHeader("新碟上架", Modifier.padding(horizontal = 16.dp)) }
             item {
-                Md3Rail {
+                Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("新碟上架") }
+            }
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.gap(12))
+                ) {
                     items(albums.size) { i ->
                         val album = albums[i]
                         Column(
                             Modifier
-                                .width(196.dp)
+                                .width(180.dp)
                                 .clip(MaterialTheme.shapes.large)
-                                .md3Clickable(onClick = { onOpenAlbum(album.id, album.name) })
+                                .md3SurfaceClick(
+                                    onClick = { onOpenAlbum(album.id, album.name) },
+                                    shape = MaterialTheme.shapes.large
+                                )
                         ) {
                             Md3Cover(
                                 album.coverUrl,
@@ -432,35 +527,44 @@ fun Md3DiscoverScreen(
                                 shape = MaterialTheme.shapes.large
                             )
                             Spacer(Modifier.height(8.dp))
-                            Text(
-                                album.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                album.subtitle ?: "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            // 固定两行的高度：专辑名长短不一时条目还能对齐
+                            Column(Modifier.height(38.dp)) {
+                                Text(
+                                    album.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    album.subtitle ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 榜单
         if (toplists.isNotEmpty()) {
-            item { Md3SectionHeader("排行榜", Modifier.padding(horizontal = 16.dp)) }
+            item {
+                Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("排行榜") }
+            }
             items(toplists) { list ->
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         .clip(MaterialTheme.shapes.large)
-                        .md3Clickable { onOpenPlaylist(list.id, list.name) }
+                        .md3SurfaceClick(
+                            onClick = { onOpenPlaylist(list.id, list.name) },
+                            shape = MaterialTheme.shapes.large
+                        )
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -483,17 +587,19 @@ fun Md3DiscoverScreen(
             }
         }
 
-        // 最新单曲
         if (singles.isNotEmpty()) {
             item {
                 Row(
                     Modifier.padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Md3SectionHeader("最新单曲", Modifier.weight(1f))
-                    TextButton(onClick = { bridge.playFrom(singles, singles.first()) }) {
-                        Text("播放全部")
-                    }
+                    Md3SectionTitle("最新单曲", Modifier.weight(1f))
+                    Md3Button(
+                        onClick = { bridge.playFrom(singles, singles.first()) },
+                        text = "播放全部",
+                        style = Md3ButtonStyle.Text,
+                        size = Md3Size.XS
+                    )
                 }
             }
             itemsIndexed(singles.take(10)) { i, song ->
@@ -525,7 +631,8 @@ fun Md3LibraryScreen(
     onOpenPlaylist: (Long, String) -> Unit,
     onOpenSong: (Long) -> Unit,
     onOpenSettings: () -> Unit,
-    scroll: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    onOpenSearch: () -> Unit,
+    scroll: LazyListState = rememberLazyListState()
 ) {
     val bridge = MusicServices.bridge
     val state = MusicServices.state
@@ -543,62 +650,44 @@ fun Md3LibraryScreen(
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 196.dp),
-        verticalArrangement = Arrangement.spacedBy(tokens.gap(14))
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(tokens.gap(12))
     ) {
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Md3PageHeader(
+                title = "资料库",
+                subtitle = state.nickname ?: "未登录 · 仅显示本地历史"
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "资料库",
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            fontSize = 38.sp, fontWeight = FontWeight.Bold
-                        )
-                    )
-                    Text(
-                        state.nickname ?: "未登录 · 仅显示本地历史",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.size(44.dp).clip(CircleShape).md3Clickable(onClick = onOpenSettings)
+                Md3IconButton(
+                    Icons.Rounded.Search,
+                    contentDescription = "搜索",
+                    onClick = onOpenSearch,
+                    size = 44.dp,
+                    tonal = true,
+                    iconSize = 20.dp
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .md3SurfaceClick(onClick = onOpenSettings, shape = CircleShape, scaleTo = .94f),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        val avatar = state.avatarUrl
-                        if (!avatar.isNullOrBlank()) Md3Cover(avatar, Modifier.fillMaxSize(), shape = CircleShape)
-                        else Icon(Icons.Rounded.LibraryMusic, null, modifier = Modifier.size(22.dp))
-                    }
-                }
-            }
-        }
-
-        // 我喜欢的音乐 / 本地
-        item {
-            Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Md3CollectionCard(
-                    title = "我喜欢的音乐",
-                    subtitle = "${state.recentSongs.size} 首最近",
-                    icon = Icons.Rounded.Favorite,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (state.recentSongs.isNotEmpty()) {
-                        bridge.playFrom(state.recentSongs, state.recentSongs.first())
-                    }
-                }
-                Md3CollectionCard(
-                    title = "最近播放",
-                    subtitle = "继续收听",
-                    icon = Icons.Rounded.History,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (state.recentSongs.isNotEmpty()) {
-                        bridge.playFrom(state.recentSongs, state.recentSongs.first())
+                    val avatar = state.avatarUrl
+                    if (!avatar.isNullOrBlank()) {
+                        Md3Cover(avatar, Modifier.fillMaxSize(), shape = CircleShape)
+                    } else {
+                        Box(
+                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.LibraryMusic,
+                                contentDescription = "设置",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -606,17 +695,37 @@ fun Md3LibraryScreen(
 
         item {
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = tab == 0,
-                    onClick = { tab = 0 },
-                    label = { Text("歌单") }
-                )
-                FilterChip(
-                    selected = tab == 1,
-                    onClick = { tab = 1 },
-                    label = { Text("最近播放") }
-                )
+                Md3CollectionCard(
+                    title = "最近播放",
+                    subtitle = "${state.recentSongs.size} 首",
+                    icon = Icons.Rounded.History,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (state.recentSongs.isNotEmpty()) {
+                        bridge.playFrom(state.recentSongs, state.recentSongs.first())
+                    } else {
+                        bridge.showToast("暂无播放记录")
+                    }
+                }
+                Md3CollectionCard(
+                    title = "私人漫游",
+                    subtitle = if (state.heartMode) "进行中" else "按口味推荐",
+                    icon = Icons.Rounded.LocalFireDepartment,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    bridge.enterHeartMode(true)
+                }
             }
+        }
+
+        item {
+            Md3ConnectedButtonGroup(
+                options = listOf("歌单", "最近播放"),
+                selected = tab,
+                onSelect = { tab = it },
+                modifier = Modifier.padding(horizontal = 16.dp),
+                fullWidth = true
+            )
         }
 
         if (tab == 0) {
@@ -624,8 +733,9 @@ fun Md3LibraryScreen(
                 item {
                     Md3EmptyState(
                         icon = Icons.Rounded.LibraryMusic,
-                        title = "还没有歌单",
-                        desc = if (state.loggedIn) "在网页版创建歌单后会同步到这里" else "登录网易云后可见你的歌单"
+                        title = if (state.loggedIn) "还没有歌单" else "未登录",
+                        desc = if (state.loggedIn) "在网页版创建歌单后会同步到这里"
+                        else "登录网易云后可见你的歌单"
                     )
                 }
             }
@@ -635,14 +745,22 @@ fun Md3LibraryScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp)
                         .clip(MaterialTheme.shapes.medium)
-                        .md3Clickable { onOpenPlaylist(p.id, p.name) }
+                        .md3SurfaceClick(
+                            onClick = { onOpenPlaylist(p.id, p.name) },
+                            shape = MaterialTheme.shapes.medium
+                        )
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Md3Cover(p.coverUrl, Modifier.size(56.dp), corner = 12.dp)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(p.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            p.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Text(
                             "${p.songCount} 首${if (!p.subtitle.isNullOrBlank()) " · ${p.subtitle}" else ""}",
                             style = MaterialTheme.typography.bodySmall,
@@ -655,6 +773,9 @@ fun Md3LibraryScreen(
             }
             if (loading) item { Md3SkeletonList(3) }
         } else {
+            if (state.recentSongs.isEmpty()) {
+                item { Md3EmptyState(Icons.Rounded.History, "还没有播放记录", "听过的歌会出现在这里") }
+            }
             itemsIndexed(state.recentSongs) { i, song ->
                 Box(Modifier.padding(horizontal = 8.dp)) {
                     Md3SongRow(
@@ -668,9 +789,6 @@ fun Md3LibraryScreen(
                         }
                     )
                 }
-            }
-            if (state.recentSongs.isEmpty()) {
-                item { Md3EmptyState(Icons.Rounded.History, "还没有播放记录", "听过的歌会出现在这里") }
             }
         }
     }
@@ -686,7 +804,10 @@ private fun Md3CollectionCard(
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
-        modifier = modifier.height(96.dp).clip(MaterialTheme.shapes.large).md3Clickable(onClick = onClick),
+        modifier = modifier
+            .height(96.dp)
+            .clip(MaterialTheme.shapes.large)
+            .md3SurfaceClick(onClick = onClick, shape = MaterialTheme.shapes.large),
         shape = MaterialTheme.shapes.large,
         color = colors.secondaryContainer.copy(alpha = .55f)
     ) {
@@ -711,7 +832,7 @@ private fun Md3CollectionCard(
 @Composable
 fun Md3StatsScreen(
     onOpenSettings: () -> Unit,
-    scroll: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    scroll: LazyListState = rememberLazyListState()
 ) {
     val bridge = MusicServices.bridge
     val tokens = LocalMd3Tokens.current
@@ -722,19 +843,18 @@ fun Md3StatsScreen(
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 196.dp),
-        verticalArrangement = Arrangement.spacedBy(tokens.gap(16))
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(tokens.gap(14))
     ) {
         item {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = tokens.gap(8))) {
-                Text(
-                    "统计",
-                    style = MaterialTheme.typography.displaySmall.copy(fontSize = 38.sp, fontWeight = FontWeight.Bold)
-                )
-                Text(
-                    "你的收听习惯",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Md3PageHeader(title = "统计", subtitle = "你的收听习惯") {
+                Md3IconButton(
+                    Icons.Rounded.Settings,
+                    contentDescription = "设置",
+                    onClick = onOpenSettings,
+                    size = 44.dp,
+                    tonal = true,
+                    iconSize = 20.dp
                 )
             }
         }
@@ -742,7 +862,7 @@ fun Md3StatsScreen(
             item { Md3SkeletonList(4) }
         } else {
             item {
-                Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Md3StatTile("总播放", "${s.totalPlays}", Modifier.weight(1f))
                     Md3StatTile("连续", "${s.streakDays} 天", Modifier.weight(1f))
                     Md3StatTile("本周", "${s.weekMinutes} 分", Modifier.weight(1f))
@@ -756,7 +876,11 @@ fun Md3StatsScreen(
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("今日收听", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Text(
+                                "今日收听",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f)
+                            )
                             Text(
                                 "${s.todayMinutes} 分钟",
                                 style = MaterialTheme.typography.headlineSmall,
@@ -779,9 +903,7 @@ fun Md3StatsScreen(
                 }
             }
             item {
-                Column(Modifier.padding(horizontal = 16.dp)) {
-                    Md3SectionHeader("最常听")
-                }
+                Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("最常听") }
             }
             itemsIndexed(s.topSongs) { i, songStat ->
                 Row(
@@ -809,9 +931,14 @@ fun Md3StatsScreen(
                     )
                 }
             }
-            item { Md3SectionHeader("最常听歌手", Modifier.padding(horizontal = 16.dp)) }
             item {
-                Md3Rail {
+                Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("最常听歌手") }
+            }
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     items(s.topArtists.size) { i ->
                         val a = s.topArtists[i]
                         Surface(
@@ -840,7 +967,7 @@ private fun Md3StatTile(label: String, value: String, modifier: Modifier = Modif
     Surface(
         modifier = modifier.height(82.dp),
         shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Column(
             Modifier.fillMaxSize().padding(12.dp),
@@ -866,77 +993,144 @@ fun Md3SearchScreen(
     onOpenPlaylist: (Long, String) -> Unit,
     onOpenArtist: (Long, String) -> Unit,
     onOpenAlbum: (Long, String) -> Unit,
-    scroll: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    scroll: LazyListState = rememberLazyListState()
 ) {
     val bridge = MusicServices.bridge
     val state = MusicServices.state
     val tokens = LocalMd3Tokens.current
+    val focus = LocalFocusManager.current
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<SearchResults?>(null) }
     var loading by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf(0) }
+    var showEmpty by remember { mutableStateOf(false) }
 
     val hot = remember { listOf("周杰伦", "陈奕迅", "林俊杰", "民谣", "摇滚", "电子", "钢琴", "深夜") }
 
-    fun runSearch(q: String) {
-        query = q
-        if (q.isBlank()) {
+    LaunchedEffect(query) {
+        if (query.isBlank()) {
             results = null
-            return
+            loading = false
+            return@LaunchedEffect
         }
         loading = true
-    }
-
-    LaunchedEffect(query) {
-        if (query.isBlank()) return@LaunchedEffect
         kotlinx.coroutines.delay(320)
-        results = runCatching { bridge.search(query) }.getOrNull()
+        val r = runCatching { bridge.search(query) }.getOrNull()
+        results = r
+        showEmpty = r == null ||
+            (r.songs.isEmpty() && r.artists.isEmpty() && r.albums.isEmpty())
         loading = false
     }
 
     LazyColumn(
         state = scroll,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 196.dp),
+        contentPadding = PaddingValues(top = md3TopInset(), bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(tokens.gap(10))
     ) {
         item {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = tokens.gap(8))) {
-                Text(
-                    "搜索",
-                    style = MaterialTheme.typography.displaySmall.copy(fontSize = 38.sp, fontWeight = FontWeight.Bold)
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                Md3PageHeader(title = "搜索", subtitle = "歌曲、歌手、专辑")
+            }
+        }
+        item {
+            // 自绘搜索框：之前用 SearchBar 套 TextField，expanded 恒为 false，
+            // 结果点击会被 SearchBar 自己吞掉，这是「搜了没反应」的原因之一。
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(52.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .padding(start = 16.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Rounded.Search,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
                 )
-                Spacer(Modifier.height(10.dp))
-                androidx.compose.material3.SearchBar(
-                    inputField = {
-                        androidx.compose.material3.TextField(
-                            value = query,
-                            onValueChange = ::runSearch,
-                            placeholder = { Text("歌曲、歌手、歌单") },
-                            leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                            singleLine = true,
-                            shape = CircleShape,
-                            colors = androidx.compose.material3.TextFieldDefaults.colors(
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                Spacer(Modifier.width(10.dp))
+                BasicTextField(
+                    value = query,
+                    onValueChange = {
+                        query = it
+                        if (it.isBlank()) {
+                            results = null
+                            showEmpty = false
+                        }
                     },
-                    expanded = false,
-                    onExpandedChange = {},
-                ) {}
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        focus.clearFocus()
+                    }),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        if (query.isEmpty()) {
+                            Text(
+                                "搜索歌曲、歌手、专辑",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        inner()
+                    }
+                )
+                if (query.isNotEmpty()) {
+                    Md3IconButton(
+                        Icons.Rounded.Close,
+                        contentDescription = "清空",
+                        onClick = {
+                            query = ""
+                            results = null
+                            showEmpty = false
+                        },
+                        size = 40.dp,
+                        iconSize = 18.dp
+                    )
+                }
+            }
+        }
+
+        if (query.isNotBlank()) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Md3ConnectedButtonGroup(
+                        options = listOf("歌曲", "歌手", "专辑"),
+                        selected = filter,
+                        onSelect = { filter = it },
+                        modifier = Modifier.weight(1f),
+                        fullWidth = true
+                    )
+                    if (loading) {
+                        Spacer(Modifier.width(10.dp))
+                        Md3LoadingIndicator()
+                    }
+                }
+            }
+        }
+
+        if (showEmpty) {
+            item {
+                Md3EmptyState(
+                    icon = Icons.Rounded.Search,
+                    title = "没有找到「$query」",
+                    desc = "换个关键词，或检查音源设置"
+                )
             }
         }
 
         if (results == null) {
             item {
-                Column(Modifier.padding(horizontal = 16.dp)) {
-                    Md3SectionHeader("大家都在搜")
-                    Spacer(Modifier.height(8.dp))
-                }
+                Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("大家都在搜") }
             }
             item {
                 androidx.compose.foundation.layout.FlowRow(
@@ -944,40 +1138,37 @@ fun Md3SearchScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    hot.forEach { word -> Md3Pill(word) { runSearch(word) } }
+                    hot.forEach { word ->
+                        Md3ToggleButton(
+                            selected = false,
+                            onToggle = { query = word },
+                            text = word,
+                            size = Md3Size.XS
+                        )
+                    }
                 }
             }
-            item {
-                Column(Modifier.padding(16.dp)) {
-                    Md3SectionHeader("最近播放")
+            if (state.recentSongs.isNotEmpty()) {
+                item {
+                    Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("最近播放") }
                 }
-            }
-            itemsIndexed(state.recentSongs.take(8)) { i, song ->
-                Box(Modifier.padding(horizontal = 8.dp)) {
-                    Md3SongRow(
-                        song = song,
-                        index = i + 1,
-                        isCurrent = state.currentSong?.id == song.id,
-                        playing = state.playing,
-                        onClick = {
-                            bridge.playFrom(state.recentSongs, song)
-                            onOpenSong(song.id)
-                        }
-                    )
+                itemsIndexed(state.recentSongs.take(8)) { i, song ->
+                    Box(Modifier.padding(horizontal = 8.dp)) {
+                        Md3SongRow(
+                            song = song,
+                            index = i + 1,
+                            isCurrent = state.currentSong?.id == song.id,
+                            playing = state.playing,
+                            onClick = {
+                                bridge.playFrom(state.recentSongs, song)
+                                onOpenSong(song.id)
+                            }
+                        )
+                    }
                 }
             }
         } else {
             val r = results!!
-            item {
-                Row(
-                    Modifier.padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("歌曲", "歌手", "专辑").forEachIndexed { i, label ->
-                        FilterChip(selected = filter == i, onClick = { filter = i }, label = { Text(label) })
-                    }
-                }
-            }
             when (filter) {
                 0 -> {
                     if (r.songs.isEmpty()) item { Md3EmptyState(title = "没有找到歌曲") }
@@ -1001,9 +1192,14 @@ fun Md3SearchScreen(
                     items(r.artists.size) { i ->
                         val a = r.artists[i]
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
                                 .clip(MaterialTheme.shapes.medium)
-                                .md3Clickable { onOpenArtist(a.id, a.name) }
+                                .md3SurfaceClick(
+                                    onClick = { onOpenArtist(a.id, a.name) },
+                                    shape = MaterialTheme.shapes.medium
+                                )
                                 .padding(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1024,16 +1220,26 @@ fun Md3SearchScreen(
                     if (r.albums.isEmpty()) item { Md3EmptyState(title = "没有找到专辑") }
                     items(r.albums) { album ->
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
                                 .clip(MaterialTheme.shapes.medium)
-                                .md3Clickable { onOpenAlbum(album.id, album.name) }
+                                .md3SurfaceClick(
+                                    onClick = { onOpenAlbum(album.id, album.name) },
+                                    shape = MaterialTheme.shapes.medium
+                                )
                                 .padding(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Md3Cover(album.coverUrl, Modifier.size(52.dp), corner = 12.dp)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(album.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    album.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                                 Text(
                                     album.artist,
                                     style = MaterialTheme.typography.bodySmall,
