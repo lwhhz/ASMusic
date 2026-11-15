@@ -284,7 +284,14 @@ private fun SettingsRoot(
         AlertDialog(
             onDismissRequest = { styleTarget = null },
             title = { Text("切换到「${target.label}」？") },
-            text = { Text(target.desc + "\n\n应用会重启一次，当前界面的设置都会保留。") },
+            text = {
+                Text(
+                    target.desc +
+                        "\n\n应用会重启一次。两套界面的设置分别保存在各自的配置里，切回来都还在；" +
+                        "但当前播放队列与播放进度会丢失（播放内核随进程重建），登录状态不受影响。" +
+                        if (target == UiStyle.Ios) "\n\n经典界面按竖屏设计，切换后会锁回竖屏。" else ""
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     Md3Config.writeStyle(ctx, target)
@@ -867,6 +874,14 @@ private fun PlaybackPage(config: Md3Config, onBack: () -> Unit) {
         item {
             SettingsGroup("歌词") {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                    SettingsSwitch(
+                        "逐字歌词",
+                        "音源带词级时间轴时按字上色；没有则整行高亮",
+                        config.lyricWordByWord
+                    ) {
+                        config.lyricWordByWord = it
+                        MusicServices.bridge.setWordByWord(it)
+                    }
                     SettingsSwitch("显示翻译", "有机器翻译时显示在原文下方", config.showLyricTranslation) {
                         config.showLyricTranslation = it
                     }

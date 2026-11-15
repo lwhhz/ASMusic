@@ -27,7 +27,11 @@ interface MusicApi {
     suspend fun qrCheck(key: String): QrStatus
 
     // ---- catalogue ----
-    suspend fun search(keyword: String): SearchResults?
+    /**
+     * 搜索。[offset] 用于结果分页（网易云按 offset 返回不同页）；
+     * offset > 0 时实现方只需返回歌曲，不必重复拉歌手/专辑。
+     */
+    suspend fun search(keyword: String, limit: Int = 20, offset: Int = 0): SearchResults?
     suspend fun newReleases(): List<Playlist>?
     suspend fun newAlbums(): List<Playlist>?
     suspend fun toplists(): List<Playlist>?
@@ -46,6 +50,9 @@ interface MusicApi {
     suspend fun allComments(id: Long): List<CommentItem>?
     suspend fun songSocial(id: Long): SongSocial?
     suspend fun likeSong(id: Long, like: Boolean): Boolean?
+
+    /** 把一首歌加入歌单；null 表示"接口不支持/未登录"，false 表示明确失败。 */
+    suspend fun addPlaylistTrack(playlistId: Long, songId: Long): Boolean? = null
     suspend fun artistAlbums(id: Long): List<Playlist>?
     suspend fun songUrl(id: Long): String?
     suspend fun songUrlAt(id: Long, level: String): com.kyant.backdrop.catalog.appstore.music.SongStream?

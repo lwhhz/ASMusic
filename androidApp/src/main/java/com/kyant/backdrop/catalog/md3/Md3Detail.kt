@@ -3,6 +3,11 @@
 package com.kyant.backdrop.catalog.md3
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloat
@@ -24,6 +29,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -54,6 +62,7 @@ import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
@@ -68,6 +77,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -117,6 +127,8 @@ fun Md3SongScreen(
     var qualities by remember(songId) { mutableStateOf<List<SongQuality>>(emptyList()) }
     var showComments by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
+    var showPlaylists by remember { mutableStateOf(false) }
+    var playlists by remember { mutableStateOf<List<com.kyant.backdrop.catalog.appstore.music.Playlist>>(emptyList()) }
     val listState = rememberLazyListState()
     val collapsed by remember {
         androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemIndex > 0 }
@@ -233,25 +245,29 @@ fun Md3SongScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            // 没有有效 id 时不挂点击：之前 id=0 也照样可点，
+                            // 点下去什么都不会发生（看起来像按钮坏了）。
+                            val artistId = current?.artistId ?: 0L
                             Text(
                                 current?.artist.orEmpty(),
                                 style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = if (artistId > 0) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .md3SurfaceClick(
-                                        onClick = {
-                                            val id = current?.artistId ?: 0L
-                                            if (id > 0) onOpenArtist(id, current?.artist.orEmpty())
-                                        },
-                                        shape = CircleShape,
-                                        scaleTo = .97f
+                                    .then(
+                                        if (artistId > 0) Modifier.md3SurfaceClick(
+                                            onClick = { onOpenArtist(artistId, current?.artist.orEmpty()) },
+                                            shape = CircleShape,
+                                            scaleTo = .97f
+                                        ) else Modifier
                                     )
                                     .padding(vertical = 2.dp, horizontal = 2.dp)
                             )
                             if (current?.album?.isNotBlank() == true) {
+                                val albumId = current.albumId
                                 Text(
                                     " · ${current.album}",
                                     style = MaterialTheme.typography.bodySmall,
@@ -260,13 +276,12 @@ fun Md3SongScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .clip(CircleShape)
-                                        .md3SurfaceClick(
-                                            onClick = {
-                                                val id = current?.albumId ?: 0L
-                                                if (id > 0) onOpenAlbum(id, current?.album.orEmpty())
-                                            },
-                                            shape = CircleShape,
-                                            scaleTo = .97f
+                                        .then(
+                                            if (albumId > 0) Modifier.md3SurfaceClick(
+                                                onClick = { onOpenAlbum(albumId, current.album.orEmpty()) },
+                                                shape = CircleShape,
+                                                scaleTo = .97f
+                                            ) else Modifier
                                         )
                                 )
                             }
@@ -375,6 +390,7 @@ fun Md3SongScreen(
                             (if (liked) "取消喜欢" else "喜欢这首歌") to {
                                 scope.launch { runCatching { bridge.likeSong(songId, !liked) } }
                             },
+                            "加入歌单" to { showPlaylists = true },
                             "分享歌词海报" to { current?.let { bridge.shareLyricPoster(it, null, null) } }
                         ),
                         icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
@@ -391,6 +407,62 @@ fun Md3SongScreen(
                         iconSize = 19.dp,
                         tonal = true
                     )
+                }
+            }
+
+            // ---- 倍速 + 睡眠定时 ----
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Md3SplitButton(
+                        text = if (state.playbackSpeed == 1f) "原速"
+                        else "${state.playbackSpeed}×",
+                        onClick = {
+                            // 单击在 1.0 → 1.25 → 1.5 → 0.75 之间循环，右箭头挑具体档
+                            val next = when (state.playbackSpeed) {
+                                1f -> 1.25f
+                                1.25f -> 1.5f
+                                1.5f -> .75f
+                                else -> 1f
+                            }
+                            bridge.setPlaybackSpeed(next)
+                        },
+                        actions = listOf(
+                            "0.5×" to { bridge.setPlaybackSpeed(.5f) },
+                            "0.75×" to { bridge.setPlaybackSpeed(.75f) },
+                            "1.0×（原速）" to { bridge.setPlaybackSpeed(1f) },
+                            "1.25×" to { bridge.setPlaybackSpeed(1.25f) },
+                            "1.5×" to { bridge.setPlaybackSpeed(1.5f) },
+                            "2.0×" to { bridge.setPlaybackSpeed(2f) }
+                        ),
+                        icon = Icons.Rounded.Speed,
+                        size = Md3Size.XS,
+                        tonal = true,
+                        trailingLabel = "选择播放速度"
+                    )
+                    Md3SplitButton(
+                        text = if (state.sleepMinutes > 0) "剩 ${state.sleepMinutes} 分" else "睡眠定时",
+                        onClick = {
+                            bridge.setSleepTimer(if (state.sleepMinutes > 0) 0 else 30)
+                            bridge.showToast(
+                                if (state.sleepMinutes > 0) "已取消睡眠定时" else "30 分钟后自动暂停"
+                            )
+                        },
+                        actions = listOf(
+                            "15 分钟后" to { bridge.setSleepTimer(15) },
+                            "30 分钟后" to { bridge.setSleepTimer(30) },
+                            "60 分钟后" to { bridge.setSleepTimer(60) },
+                            "关闭定时" to { bridge.setSleepTimer(0) }
+                        ),
+                        icon = Icons.Rounded.Bedtime,
+                        size = Md3Size.XS,
+                        tonal = true,
+                        trailingLabel = "睡眠定时选项"
+                    )
+                    Spacer(Modifier.weight(1f))
                     Md3IconButton(
                         Icons.Rounded.GraphicEq,
                         contentDescription = "音质",
@@ -412,7 +484,8 @@ fun Md3SongScreen(
                         onSeek = {
                             if (isCurrent) bridge.seek(it)
                             else if (current != null) bridge.play(current)
-                        }
+                        },
+                        wordByWord = state.wordByWord
                     )
                 }
             }
@@ -532,6 +605,77 @@ fun Md3SongScreen(
             Md3CommentsSheet(comments) { showComments = false }
         }
     }
+    if (showPlaylists) {
+        LaunchedEffect(Unit) {
+            playlists = runCatching { bridge.personalPlaylists() }.getOrDefault(emptyList())
+        }
+        ModalBottomSheet(
+            onDismissRequest = { showPlaylists = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
+                Text("加入歌单", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (state.loggedIn) "选择一个歌单收下这首歌" else "需要登录后才能加入歌单",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                if (playlists.isEmpty()) {
+                    Md3EmptyState(
+                        icon = Icons.Rounded.QueueMusic,
+                        title = if (state.loggedIn) "还没有自建歌单" else "未登录",
+                        desc = if (state.loggedIn) "在网易云里建一个歌单再来" else "先扫码登录账号"
+                    )
+                }
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                    items(playlists) { pl ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(60.dp)
+                                .clip(MaterialTheme.shapes.medium)
+                                .md3SurfaceClick(
+                                    onClick = {
+                                        scope.launch {
+                                            val ok = bridge.addToPlaylist(pl.id, songId)
+                                            bridge.showToast(
+                                                if (ok) "已加入《${pl.name}》" else "加入失败，检查登录状态"
+                                            )
+                                            if (ok) {
+                                                // 歌单列表有缓存，本地先 +1，免得看起来"没加进去"
+                                                playlists = playlists.map {
+                                                    if (it.id == pl.id) it.copy(songCount = it.songCount + 1)
+                                                    else it
+                                                }
+                                                showPlaylists = false
+                                            }
+                                        }
+                                    },
+                                    shape = MaterialTheme.shapes.medium,
+                                    scaleTo = .99f
+                                )
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Md3Cover(pl.coverUrl, Modifier.size(44.dp), corner = 10.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(pl.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                Text(
+                                    "${pl.songCount} 首",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (showQuality) {
         ModalBottomSheet(onDismissRequest = { showQuality = false }) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
@@ -736,16 +880,32 @@ fun Md3LyricCard(
     positionMs: Long,
     showTranslation: Boolean,
     onSeek: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    wordByWord: Boolean = true
 ) {
     val active = lines.indexOfLast { it.timeMs <= positionMs }.coerceAtLeast(0)
     val listState = rememberLazyListState()
-    LaunchedEffect(active) {
-        if (active >= 0 && active < lines.size) {
-            runCatching { listState.animateScrollToItem(active.coerceAtLeast(0)) }
+    val colors = MaterialTheme.colorScheme
+
+    // 用户正在拖动歌词时不要抢滚动：之前自动滚动会在手指下把列表拽走。
+    // 松手后再等 3 秒恢复跟随，够用户读完想读的那几句。
+    val dragged by listState.interactionSource.collectIsDraggedAsState()
+    var holdAutoScroll by remember { mutableStateOf(false) }
+    LaunchedEffect(dragged) {
+        if (dragged) {
+            holdAutoScroll = true
+        } else {
+            kotlinx.coroutines.delay(3000)
+            holdAutoScroll = false
         }
     }
-    val colors = MaterialTheme.colorScheme
+    LaunchedEffect(active, holdAutoScroll) {
+        if (!holdAutoScroll && active in lines.indices) {
+            // 让当前行停在偏上位置，后面还有可见的上下文
+            runCatching { listState.animateScrollToItem(active, scrollOffset = -220) }
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
         shape = MaterialTheme.shapes.extraLarge,
@@ -766,6 +926,14 @@ fun Md3LyricCard(
                     style = MaterialTheme.typography.labelLarge,
                     color = colors.primary
                 )
+                Spacer(Modifier.weight(1f))
+                if (wordByWord && lines.any { it.words.isNotEmpty() }) {
+                    Text(
+                        "逐字",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant
+                    )
+                }
             }
             Spacer(Modifier.height(10.dp))
             LazyColumn(
@@ -780,6 +948,22 @@ fun Md3LyricCard(
                         animationSpec = LocalMd3Tokens.current.spring,
                         label = "lyric-scale"
                     )
+                    // 逐字：有 yrc 轴时按字上色，没有就整行上色
+                    val hasWords = wordByWord && line.words.isNotEmpty()
+                    val text = remember(line, isActive, positionMs) {
+                        if (isActive && hasWords) {
+                            karaokeText(
+                                line,
+                                positionMs,
+                                unsung = colors.onSurfaceVariant.copy(alpha = .45f),
+                                sung = colors.onSurface
+                            )
+                        } else {
+                            androidx.compose.ui.text.AnnotatedString(
+                                cleanLyric(line.text).ifBlank { "♪" }
+                            )
+                        }
+                    }
                     Column(
                         Modifier
                             .fillMaxWidth()
@@ -788,7 +972,7 @@ fun Md3LyricCard(
                             .md3SurfaceClick(onClick = { onSeek(line.timeMs) }, scaleTo = .99f)
                     ) {
                         Text(
-                            cleanLyric(line.text).ifBlank { "♪" },
+                            text,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
                             ),
@@ -811,12 +995,54 @@ fun Md3LyricCard(
     }
 }
 
+/**
+ * 逐字上色。
+ *
+ * 每个词按它自己的时间窗口从「未唱」渐变到「已唱」，这样长音也会跟着走；
+ * 没有词级时间轴的行退化成整行单色（调用方处理）。
+ */
+private fun karaokeText(
+    line: LyricLine,
+    positionMs: Long,
+    unsung: Color,
+    sung: Color
+): androidx.compose.ui.text.AnnotatedString = androidx.compose.ui.text.buildAnnotatedString {
+    line.words.forEach { w ->
+        val progress = when {
+            positionMs <= w.timeMs -> 0f
+            w.durationMs <= 0L -> 1f
+            else -> ((positionMs - w.timeMs).toFloat() / w.durationMs).coerceIn(0f, 1f)
+        }
+        withStyle(
+            androidx.compose.ui.text.SpanStyle(
+                color = androidx.compose.ui.graphics.lerp(unsung, sung, progress)
+            )
+        ) {
+            append(w.text)
+        }
+    }
+}
+
 private fun Modifier.graphicsLayerScale(scale: Float): Modifier =
     this.scale(scale)
 
 // ---------------------------------------------------------------------------
 // 歌单 / 专辑 / 艺人
 // ---------------------------------------------------------------------------
+
+/**
+ * 二级页数据的内存缓存。
+ *
+ * 返回上一页时，页面会被重新组合：如果曲目列表从空开始，LazyColumn 会先把
+ * 恢复出来的滚动位置夹回 0（列表项不够），等网络回来已经晚了 —— 表现就是
+ * 「从歌曲返回歌单，列表跳回顶部」。这里把上次的列表留在内存里，重新进入时
+ * 立刻有数据，滚动位置才能对上。进程退出即失效，不写磁盘。
+ */
+internal object Md3PageCache {
+    val playlist = mutableMapOf<Long, List<Song>>()
+    val album = mutableMapOf<Long, List<Song>>()
+    val artist = mutableMapOf<Long, List<Song>>()
+}
 
 @Composable
 fun Md3PlaylistScreen(
@@ -832,16 +1058,33 @@ fun Md3PlaylistScreen(
     var name by remember(id) { mutableStateOf(fallbackName) }
     var cover by remember(id) { mutableStateOf<String?>(null) }
     var subtitle by remember(id) { mutableStateOf<String?>(null) }
-    var songs by remember(id) { mutableStateOf<List<Song>>(emptyList()) }
-    var loading by remember(id) { mutableStateOf(true) }
+    var songs by remember(id) { mutableStateOf(Md3PageCache.playlist[id].orEmpty()) }
+    var loading by remember(id) { mutableStateOf(Md3PageCache.playlist[id] == null) }
+    // 大歌单只先组合前 80 首：1000 首一次性进 LazyColumn 会让首帧明显变慢，
+    // 滚动到底再补 80（列表本身是懒组合，这里省的是数据/状态构造的开销）。
+    var visibleCount by remember(id) { mutableIntStateOf(80) }
     val listState = rememberLazyListState()
     val collapsed by remember { androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemScrollOffset > 400 || listState.firstVisibleItemIndex > 0 } }
+
+    val nearEnd by remember {
+        androidx.compose.runtime.derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - 6
+        }
+    }
+    LaunchedEffect(nearEnd, songs.size) {
+        if (nearEnd && visibleCount < songs.size) visibleCount = (visibleCount + 80).coerceAtMost(songs.size)
+    }
 
     LaunchedEffect(id) {
         coroutineScope {
             val listTask = async { runCatching { bridge.playlistSongs(id) }.getOrDefault(emptyList()) }
             val songsResult = listTask.await()
-            songs = songsResult
+            if (songsResult.isNotEmpty()) {
+                songs = songsResult
+                Md3PageCache.playlist[id] = songsResult
+            }
             loading = false
         }
     }
@@ -900,7 +1143,7 @@ fun Md3PlaylistScreen(
             }
         }
 
-        itemsIndexed(songs) { i, song ->
+        itemsIndexed(songs.take(visibleCount)) { i, song ->
             Box(Modifier.padding(horizontal = 8.dp)) {
                 Md3SongRow(
                     song = song,
@@ -908,10 +1151,23 @@ fun Md3PlaylistScreen(
                     isCurrent = state.currentSong?.id == song.id,
                     playing = state.playing,
                     onClick = {
+                        // 队列始终用完整列表，而不是当前已加载的窗口
                         bridge.playFrom(songs, song)
                         onOpenSong(song.id)
                     }
                 )
+            }
+        }
+        if (visibleCount < songs.size) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    Md3Button(
+                        onClick = { visibleCount = (visibleCount + 80).coerceAtMost(songs.size) },
+                        text = "继续加载（${songs.size - visibleCount}）",
+                        style = Md3ButtonStyle.Tonal,
+                        size = Md3Size.XS
+                    )
+                }
             }
         }
         if (loading) item { Md3SkeletonList(5) }
@@ -967,14 +1223,18 @@ fun Md3AlbumScreen(
 ) {
     val bridge = MusicServices.bridge
     val state = MusicServices.state
-    var songs by remember(id) { mutableStateOf<List<Song>>(emptyList()) }
+    var songs by remember(id) { mutableStateOf(Md3PageCache.album[id].orEmpty()) }
     var desc by remember(id) { mutableStateOf<String?>(null) }
-    var loading by remember(id) { mutableStateOf(true) }
+    var loading by remember(id) { mutableStateOf(Md3PageCache.album[id] == null) }
     LaunchedEffect(id) {
         coroutineScope {
             val s = async { runCatching { bridge.albumSongs(id) }.getOrNull().orEmpty() }
             val d = async { runCatching { bridge.albumDescription(id) }.getOrNull() }
-            songs = s.await()
+            val list = s.await()
+            if (list.isNotEmpty()) {
+                songs = list
+                Md3PageCache.album[id] = list
+            }
             desc = d.await()
             loading = false
         }
@@ -1166,33 +1426,99 @@ fun Md3ArtistScreen(
 fun Md3QueueSheet(onClose: () -> Unit) {
     val state = MusicServices.state
     val bridge = MusicServices.bridge
-    LazyColumn(
-        Modifier.fillMaxWidth().height(540.dp),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("播放队列", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+    val listState = rememberLazyListState()
+    var removeIndex by remember { mutableStateOf<Int?>(null) }
+    var confirmClear by remember { mutableStateOf(false) }
+
+    // 打开时定位到正在播放的那首：队列几十首时，从第 1 首往下翻很折磨。
+    LaunchedEffect(state.playQueue.size) {
+        if (state.playQueue.isNotEmpty() && state.playQueue.size > 6) {
+            runCatching { listState.scrollToItem(state.queueIndex) }
+        }
+    }
+
+    Column(Modifier.fillMaxWidth().height(540.dp)) {
+        // 标题放在 LazyColumn 外面：定位到当前曲时它不会被一起滚走。
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("播放队列", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "${state.playQueue.size} 首",
-                    style = MaterialTheme.typography.labelMedium,
+                    "${state.playQueue.size} 首 · 正在播放第 ${state.queueIndex + 1} 首",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            if (state.playQueue.size > 1) {
+                Md3Button(
+                    onClick = { confirmClear = true },
+                    text = "清空",
+                    style = Md3ButtonStyle.Text,
+                    size = Md3Size.XS
+                )
+            }
         }
-        itemsIndexed(state.playQueue) { i, song ->
-            Md3SongRow(
-                song = song,
-                index = i + 1,
-                isCurrent = state.currentSong?.id == song.id,
-                playing = state.playing,
-                onClick = { bridge.playQueueIndex(i) }
-            )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            itemsIndexed(state.playQueue) { i, song ->
+                Md3SongRow(
+                    song = song,
+                    index = i + 1,
+                    isCurrent = state.currentSong?.id == song.id,
+                    playing = state.playing,
+                    onClick = {
+                        bridge.playQueueIndex(i)
+                        onClose()
+                    },
+                    onMore = { removeIndex = i }
+                )
+            }
+            if (state.playQueue.isEmpty()) {
+                item { Md3EmptyState(title = "队列是空的", desc = "播放一首歌后会出现在这里") }
+            }
         }
-        if (state.playQueue.isEmpty()) {
-            item { Md3EmptyState(title = "队列是空的", desc = "播放一首歌后会出现在这里") }
-        }
+    }
+
+    removeIndex?.let { index ->
+        val song = state.playQueue.getOrNull(index)
+        AlertDialog(
+            onDismissRequest = { removeIndex = null },
+            title = { Text("从队列移除？") },
+            text = {
+                Text(
+                    if (song != null) "《${song.name}》会从播放队列里移除" +
+                        if (index == state.queueIndex) "，并切到下一首。" else "。"
+                    else ""
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    bridge.removeFromQueue(index)
+                    removeIndex = null
+                }) { Text("移除") }
+            },
+            dismissButton = { TextButton(onClick = { removeIndex = null }) { Text("取消") } }
+        )
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("清空播放队列？") },
+            text = { Text("会清掉其余 ${(state.playQueue.size - 1).coerceAtLeast(0)} 首，正在播放的这首保留。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    bridge.clearQueue()
+                    confirmClear = false
+                }) { Text("清空") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } }
+        )
     }
 }

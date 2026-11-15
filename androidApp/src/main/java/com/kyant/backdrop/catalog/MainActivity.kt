@@ -88,6 +88,17 @@ class MainActivity : ComponentActivity() {
         created.initState()
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // MD3 是自适应界面（横屏 / 平板 / 折叠屏都由窗口尺寸类别驱动），
+        // 而经典（iOS）界面是按竖屏设计的，锁竖屏避免把毛玻璃布局拉变形。
+        runCatching {
+            val md3Active = com.kyant.backdrop.catalog.md3.Md3Config.readStyle(this) ==
+                com.kyant.backdrop.catalog.md3.UiStyle.Md3
+            requestedOrientation = if (md3Active) {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            } else {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        }
         setContent {
             // Record the device density once, then apply the user's UI / font scale.
             // Lyric surfaces opt out by restoring this stored density.

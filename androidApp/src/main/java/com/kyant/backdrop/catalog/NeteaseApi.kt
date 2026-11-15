@@ -90,9 +90,9 @@ class NeteaseApi(private val config: AppConfig) : MusicApi {
 
     // ---- catalogue ----
 
-    override suspend fun search(keyword: String): SearchResults? {
+    override suspend fun search(keyword: String, limit: Int, offset: Int): SearchResults? {
         val encoded = URLEncoder.encode(keyword, "UTF-8")
-        val j = get("/search?keywords=$encoded&type=1&limit=20") ?: return null
+        val j = get("/search?keywords=$encoded&type=1&limit=$limit&offset=$offset") ?: return null
         val arr = j.optJSONObject("result")?.optJSONArray("songs") ?: return null
         val songs = (0 until arr.length()).mapNotNull { parseNeteaseSong(arr.optJSONObject(it)) }
         if (songs.isEmpty()) return null
@@ -376,6 +376,12 @@ class NeteaseApi(private val config: AppConfig) : MusicApi {
     }
 
     override suspend fun likeSong(id: Long, like: Boolean): Boolean? = null
+
+    override suspend fun addPlaylistTrack(playlistId: Long, songId: Long): Boolean? {
+        // 代理的 /playlist/tracks 支持 GET（op=add&pid&tracks）
+        val j = get("/playlist/tracks?op=add&pid=$playlistId&tracks=$songId") ?: return null
+        return j.optInt("code", -1) == 200 || j.optInt("status", 0) == 200
+    }
 
     override suspend fun artistAlbums(id: Long): List<Playlist>? = null
 

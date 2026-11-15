@@ -561,7 +561,7 @@ private fun UiStyleDialog(
                 Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 4.dp)
             )
             Txt(
-                "两套界面各自独立设置，切换后应用会重启。",
+                "两套界面各自独立设置，切换后应用会重启。\n当前播放队列与进度会丢失，登录状态不受影响。",
                 AS.caption().copy(textAlign = TextAlign.Center),
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp)
             )

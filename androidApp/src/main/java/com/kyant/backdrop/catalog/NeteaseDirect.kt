@@ -182,20 +182,27 @@ class NeteaseDirect(private val config: AppConfig) : MusicApi {
 
     // ---- catalogue ----
 
-    override suspend fun search(keyword: String): SearchResults? {
+    override suspend fun search(keyword: String, limit: Int, offset: Int): SearchResults? {
         val body = eapi(
             "/api/search/get",
             JSONObject()
                 .put("s", keyword)
                 .put("type", 1)
-                .put("limit", 20)
-                .put("offset", 0)
+                .put("limit", limit)
+                .put("offset", offset)
         ).body ?: return null
         val arr = body.optJSONObject("result")?.optJSONArray("songs") ?: return null
         val songs = (0 until arr.length()).mapNotNull { parseNeteaseSong(arr.optJSONObject(it)) }
         if (songs.isEmpty()) return null
         // The legacy search payload omits artwork; one batched detail call fills it.
         val withCovers = fillMissingCovers(songs)
+        // 翻页时只要歌曲：歌手/专辑在第一页已经给过，重复请求纯属浪费
+        if (offset > 0) {
+            // 旧接口 /api/search/get 的 offset 常被忽略（翻页会拿回同一批），
+            // 再要一页时改用 cloudsearch/pc —— 它按 offset 真正分页。
+            val more = searchPageByCloud(keyword, limit, offset)
+            return SearchResults(if (more.isEmpty()) withCovers else more, emptyList(), emptyList())
+        }
         val realArtists = searchArtists(keyword)
         val artists = if (realArtists.isEmpty()) {
             withCovers.map { ArtistBrief(it.artist.hashCode().toLong(), it.artist, it.coverUrl) }
@@ -213,6 +220,31 @@ class NeteaseDirect(private val config: AppConfig) : MusicApi {
         val albums = withCovers.map { AlbumBrief(it.albumId, it.album, it.artist, it.coverUrl) }
             .distinctBy { it.id }.take(6)
         return SearchResults(withCovers, artists, albums)
+    }
+
+    /**
+     * 分页搜索（weapi /api/cloudsearch/pc）。
+     *
+     * 这个接口的 offset 是真的生效的，返回结构与旧接口一致（result.songs）。
+     */
+    private suspend fun searchPageByCloud(keyword: String, limit: Int, offset: Int): List<Song> {
+        // 实测这个接口的 offset 对匿名 cookie 不生效（每次都回同一批），
+        // 但 limit 是生效的。所以改成「一次要 offset+limit 条，再丢掉前 offset 条」。
+        // 代价是翻得越深单次请求越大，因此在 100 条处封顶（前 5 页够用）。
+        val wanted = (offset + limit).coerceAtMost(100)
+        val body = weapi(
+            "/api/cloudsearch/pc",
+            JSONObject()
+                .put("s", keyword)
+                .put("type", 1)
+                .put("limit", wanted)
+                .put("offset", 0)
+                .put("total", true)
+        ).body ?: return emptyList()
+        val arr = body.optJSONObject("result")?.optJSONArray("songs") ?: return emptyList()
+        return (0 until arr.length())
+            .mapNotNull { parseNeteaseSong(arr.optJSONObject(it)) }
+            .drop(offset)
     }
 
     /** Fill missing song / album covers from the batched song-detail endpoint. */
@@ -660,6 +692,33 @@ class NeteaseDirect(private val config: AppConfig) : MusicApi {
             body.optInt("code") == 200
         }.getOrNull()
     }
+
+    /**
+     * 把一首歌加入歌单。
+     *
+     * 走 /api/playlist/manipulate/tracks（weapi）。trackIds 必须是 JSON 数组字符串，
+     * 直接传 Long 会被服务端忽略；imme=true 让服务端立刻重算曲目数。
+     */
+    override suspend fun addPlaylistTrack(playlistId: Long, songId: Long): Boolean? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = weapi(
+                    "/api/playlist/manipulate/tracks",
+                    JSONObject()
+                        .put("op", "add")
+                        .put("pid", playlistId)
+                        .put("trackIds", "[$songId]")
+                        .put("imme", "true")
+                ).body ?: return@runCatching null
+                val code = body.optInt("code", -1)
+                // 401 未登录、502 歌单已满/无权限
+                when (code) {
+                    200 -> true
+                    401, 403 -> false
+                    else -> false
+                }
+            }.getOrNull()
+        }
 
     /** 歌手专辑列表。 */
     override suspend fun artistAlbums(id: Long): List<Playlist>? = withContext(Dispatchers.IO) {

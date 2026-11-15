@@ -165,6 +165,8 @@ class Md3Config(context: Context) {
     private val headerStyleS = IntSetting("header_style", HeaderStyle.Large.ordinal, 0..1)
     private val miniPlayerS = BoolSetting("mini_player", true)
     private val lyricTranslationS = BoolSetting("lyric_translation", true)
+    // MD3 的歌词卡是按逐字设计的，默认开（yrc 缺失会自动退化成整行）
+    private val lyricWordByWordS = BoolSetting("lyric_word_by_word", true)
     private val coverCornerS = BoolSetting("cover_corner", true)
     private val greetingS = IntSetting("greeting", 1, 0..2)
     private val rememberTabS = BoolSetting("remember_tab", true)
@@ -173,6 +175,35 @@ class Md3Config(context: Context) {
     // ---- 播放页 ----
     private val breathingCoverS = BoolSetting("breathing_cover", true)
     private val seekStyleS = IntSetting("seek_style", SeekStyle.Wavy.ordinal, 0..1)
+
+    // ---- 搜索历史：最多 10 条，新的在前 ----
+    private val historyState = mutableStateOf(
+        prefs.getString("search_history", "").orEmpty()
+            .split('\u0001')
+            .filter { it.isNotBlank() }
+    )
+
+    /** 搜索历史（只读，改它走 push/remove/clear）。 */
+    val searchHistory: List<String> get() = historyState.value
+
+    fun pushSearchHistory(q: String) {
+        val t = q.trim()
+        if (t.isBlank()) return
+        val next = (listOf(t) + historyState.value.filter { it != t }).take(10)
+        historyState.value = next
+        prefs.edit().putString("search_history", next.joinToString("\u0001")).apply()
+    }
+
+    fun removeSearchHistory(q: String) {
+        val next = historyState.value.filter { it != q }
+        historyState.value = next
+        prefs.edit().putString("search_history", next.joinToString("\u0001")).apply()
+    }
+
+    fun clearSearchHistory() {
+        historyState.value = emptyList()
+        prefs.edit().remove("search_history").apply()
+    }
 
     var schemeStyle: SchemeStyle
         get() = SchemeStyle.from(schemeStyleS.read())
@@ -238,6 +269,10 @@ class Md3Config(context: Context) {
     var showMiniPlayer: Boolean
         get() = miniPlayerS.read()
         set(v) = miniPlayerS.write(v)
+
+    var lyricWordByWord: Boolean
+        get() = lyricWordByWordS.read()
+        set(v) = lyricWordByWordS.write(v)
 
     var showLyricTranslation: Boolean
         get() = lyricTranslationS.read()

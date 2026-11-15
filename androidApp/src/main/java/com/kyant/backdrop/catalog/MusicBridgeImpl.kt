@@ -253,6 +253,12 @@ class MusicBridgeImpl(
         return Fixtures.search(q)
     }
 
+    override suspend fun searchPage(q: String, offset: Int, limit: Int): SearchResults {
+        if (q.isBlank() || offset <= 0) return SearchResults()
+        // 翻页走网络、不写缓存：缓存键是「关键词」，分页内容会互相覆盖。
+        return runCatching { api.search(q, limit, offset) }.getOrNull() ?: SearchResults()
+    }
+
     override suspend fun newReleases(): List<Playlist> =
         cachedPlaylists("newsong", Fixtures.newReleases) { api.newReleases() }
 
@@ -409,7 +415,7 @@ class MusicBridgeImpl(
 
     override suspend fun lyric(id: Long): List<LyricLine> {
         // v2 key: older entries carry neither translations nor karaoke timings.
-        val key = "lyric2:$id"
+        val key = "lyric3:$id"
         val wantWords = st.wordByWord
         // A cached entry is usable unless the caller wants karaoke timings and this
         // entry is known to lack them. "Known" has to include a recorded miss (`nw`):
@@ -476,7 +482,7 @@ class MusicBridgeImpl(
      * overwrite an entry that already carries word timings.
      */
     private fun refreshLyricInBackground(id: Long) {
-        val key = "lyric2:$id"
+        val key = "lyric3:$id"
         scope.launch(Dispatchers.IO) {
             val fresh = runCatching { api.lyric(id) }.getOrNull().orEmpty()
             if (fresh.isEmpty()) return@launch
@@ -1104,9 +1110,80 @@ class MusicBridgeImpl(
         start(queue[index])
     }
 
+    override fun removeFromQueue(index: Int) {
+        if (index !in queue.indices) return
+        val removedCurrent = index == queueIndex
+        val next = queue.toMutableList().apply { removeAt(index) }
+        if (next.isEmpty()) {
+            queue = emptyList()
+            queueIndex = 0
+            st.playQueue = emptyList()
+            st.queueIndex = 0
+            pause()
+            return
+        }
+        // 删当前曲：顺延到同位置那首（删末尾则前移一位），并真的切过去
+        val newIndex = when {
+            index < queueIndex -> queueIndex - 1
+            index == queueIndex -> index.coerceAtMost(next.lastIndex)
+            else -> queueIndex
+        }
+        queue = next
+        queueIndex = newIndex
+        st.playQueue = next
+        st.queueIndex = newIndex
+        if (removedCurrent) start(next[newIndex])
+    }
+
+    override fun clearQueue() {
+        // 保留正在播放的这首：直接清空会让用户以为"清空了歌还在响"是 bug，
+        // 但全停又太粗暴，保留当前曲是两种预期里更合理的那个。
+        val current = st.currentSong
+        if (current == null) {
+            queue = emptyList()
+            queueIndex = 0
+            st.playQueue = emptyList()
+            st.queueIndex = 0
+            return
+        }
+        queue = listOf(current)
+        queueIndex = 0
+        st.playQueue = queue
+        st.queueIndex = 0
+    }
+
     override fun setPlayMode(mode: PlayMode) {
         config.playMode = mode.name
         st.playMode = mode
+    }
+
+    override fun setPlaybackSpeed(speed: Float) {
+        val v = speed.coerceIn(.5f, 2f)
+        st.playbackSpeed = v
+        // ExoPlayer 必须在创建它的线程（主线程）上调
+        runCatching { player.exoPlayer.setPlaybackSpeed(v) }
+    }
+
+    private var sleepJob: kotlinx.coroutines.Job? = null
+
+    override fun setSleepTimer(minutes: Int) {
+        sleepJob?.cancel()
+        if (minutes <= 0) {
+            st.sleepMinutes = 0
+            return
+        }
+        st.sleepMinutes = minutes
+        sleepJob = scope.launch {
+            var left = minutes
+            while (left > 0) {
+                kotlinx.coroutines.delay(60_000)
+                left -= 1
+                st.sleepMinutes = left
+            }
+            pause()
+            st.sleepMinutes = 0
+            st.toast = "睡眠定时结束，已暂停"
+        }
     }
 
     override fun setPlaybackQuality(level: String?) {
@@ -1859,6 +1936,14 @@ class MusicBridgeImpl(
             st.likedIds = if (like) st.likedIds + id else st.likedIds - id
         }
         return ok
+    }
+
+    override suspend fun addToPlaylist(playlistId: Long, songId: Long): Boolean {
+        if (!st.loggedIn) {
+            st.toast = "需要先登录才能加入歌单"
+            return false
+        }
+        return runCatching { api.addPlaylistTrack(playlistId, songId) }.getOrNull() == true
     }
 
     override suspend fun heartPoolSongs(): List<Song> = withContext(Dispatchers.IO) {

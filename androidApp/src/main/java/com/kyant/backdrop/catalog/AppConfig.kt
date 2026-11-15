@@ -161,7 +161,9 @@ class AppConfig(context: Context) {
 
     // ---- lyric preferences ----
     var wordByWord: Boolean
-        get() = prefs.getBoolean("lyric_word_by_word", false)
+        // 默认开启：yrc 有就逐字、没有自动退化成整行，开启没有副作用。
+        // 之前默认关闭，导致 MD3 歌词卡永远拿不到词级时间轴。
+        get() = prefs.getBoolean("lyric_word_by_word", true)
         set(value) { prefs.edit().putBoolean("lyric_word_by_word", value).apply() }
 
     var showTranslation: Boolean

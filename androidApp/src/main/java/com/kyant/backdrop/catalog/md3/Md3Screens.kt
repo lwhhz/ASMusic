@@ -48,6 +48,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -957,6 +959,7 @@ private fun Md3StatTile(label: String, value: String, modifier: Modifier = Modif
 
 @Composable
 fun Md3SearchScreen(
+    config: Md3Config,
     onOpenSong: (Long) -> Unit,
     onOpenPlaylist: (Long, String) -> Unit,
     onOpenArtist: (Long, String) -> Unit,
@@ -972,6 +975,10 @@ fun Md3SearchScreen(
     var loading by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf(0) }
     var showEmpty by remember { mutableStateOf(false) }
+    // 分页：results 只保留第一页（含歌手/专辑），歌曲列表额外累加
+    var songs by remember { mutableStateOf<List<com.kyant.backdrop.catalog.appstore.music.Song>>(emptyList()) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var endReached by remember { mutableStateOf(false) }
 
     val hot = remember { listOf("周杰伦", "陈奕迅", "林俊杰", "民谣", "摇滚", "电子", "钢琴", "深夜") }
 
@@ -985,9 +992,40 @@ fun Md3SearchScreen(
         kotlinx.coroutines.delay(320)
         val r = runCatching { bridge.search(query) }.getOrNull()
         results = r
+        songs = r?.songs.orEmpty()
+        endReached = false
         showEmpty = r == null ||
             (r.songs.isEmpty() && r.artists.isEmpty() && r.albums.isEmpty())
         loading = false
+    }
+
+    // 滚到接近底部时补一页。只对「歌曲」生效：歌手/专辑本来就只取前 6 条。
+    val nearEnd by remember {
+        androidx.compose.runtime.derivedStateOf {
+            val info = scroll.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
+        }
+    }
+    // 注意：网络请求不能直接放在 LaunchedEffect(nearEnd) 里。
+    // 滚动时 nearEnd 会来回翻转，effect 重启就把在飞的请求取消掉
+    // （表现为「翻页请求报 composition 已退出、然后错误地显示没有更多了」）。
+    // 所以用独立 scope 发请求，effect 只负责触发。
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(nearEnd) {
+        if (!nearEnd || query.isBlank() || filter != 0) return@LaunchedEffect
+        if (loading || loadingMore || endReached || songs.isEmpty()) return@LaunchedEffect
+        loadingMore = true
+        val q = query
+        val from = songs.size
+        scope.launch {
+            val more = runCatching { bridge.searchPage(q, from) }.getOrNull()
+            if (query == q) {
+                val add = more?.songs.orEmpty().filterNot { c -> songs.any { it.id == c.id } }
+                if (add.isEmpty()) endReached = true else songs = songs + add
+            }
+            loadingMore = false
+        }
     }
 
     LazyColumn(
@@ -1036,6 +1074,7 @@ fun Md3SearchScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {
                         focus.clearFocus()
+                        config.pushSearchHistory(query)
                     }),
                     modifier = Modifier.weight(1f),
                     decorationBox = { inner ->
@@ -1097,6 +1136,50 @@ fun Md3SearchScreen(
         }
 
         if (results == null) {
+            if (config.searchHistory.isNotEmpty()) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Md3SectionTitle("搜索历史", Modifier.weight(1f))
+                        Md3Button(
+                            onClick = { config.clearSearchHistory() },
+                            text = "清空",
+                            style = Md3ButtonStyle.Text,
+                            size = Md3Size.XS
+                        )
+                    }
+                }
+                item {
+                    androidx.compose.foundation.layout.FlowRow(
+                        Modifier.padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        config.searchHistory.forEach { word ->
+                            Row(
+                                Modifier
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .md3SurfaceClick(onClick = { query = word }, shape = CircleShape)
+                                    .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(word, style = MaterialTheme.typography.labelLarge)
+                                Spacer(Modifier.width(2.dp))
+                                Md3IconButton(
+                                    Icons.Rounded.Close,
+                                    contentDescription = "删除这条历史",
+                                    onClick = { config.removeSearchHistory(word) },
+                                    size = 28.dp,
+                                    iconSize = 14.dp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 Column(Modifier.padding(horizontal = 16.dp)) { Md3SectionTitle("大家都在搜") }
             }
@@ -1109,7 +1192,10 @@ fun Md3SearchScreen(
                     hot.forEach { word ->
                         Md3ToggleButton(
                             selected = false,
-                            onToggle = { query = word },
+                            onToggle = {
+                                query = word
+                                config.pushSearchHistory(word)
+                            },
                             text = word,
                             size = Md3Size.XS
                         )
@@ -1139,8 +1225,8 @@ fun Md3SearchScreen(
             val r = results!!
             when (filter) {
                 0 -> {
-                    if (r.songs.isEmpty()) item { Md3EmptyState(title = "没有找到歌曲") }
-                    itemsIndexed(r.songs) { i, song ->
+                    if (songs.isEmpty()) item { Md3EmptyState(title = "没有找到歌曲") }
+                    itemsIndexed(songs) { i, song ->
                         Box(Modifier.padding(horizontal = 8.dp)) {
                             Md3SongRow(
                                 song = song,
@@ -1148,10 +1234,28 @@ fun Md3SearchScreen(
                                 isCurrent = state.currentSong?.id == song.id,
                                 playing = state.playing,
                                 onClick = {
-                                    bridge.playFrom(r.songs, song)
+                                    config.pushSearchHistory(query)
+                                    bridge.playFrom(songs, song)
                                     onOpenSong(song.id)
                                 }
                             )
+                        }
+                    }
+                    if (loadingMore) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                Md3LoadingIndicator()
+                            }
+                        }
+                    } else if (endReached && songs.isNotEmpty()) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    "没有更多了",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

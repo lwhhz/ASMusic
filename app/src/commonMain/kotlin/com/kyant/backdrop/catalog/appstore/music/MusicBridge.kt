@@ -45,6 +45,10 @@ class MusicState {
     var queueIndex by mutableStateOf(0)
     /** Playback order (顺序 / 循环 / 单曲 / 随机). */
     var playMode by mutableStateOf(PlayMode.LoopAll)
+    /** 播放速度 0.5..2.0，1 为原速。 */
+    var playbackSpeed by mutableStateOf(1f)
+    /** 睡眠定时剩余分钟；0 表示未开启。 */
+    var sleepMinutes by mutableStateOf(0)
     /**
      * Corner radius of the capsule **on the song detail page** (its expanded
      * full-width form). 1 = full capsule; 0..~0.99 = rounded rectangle.
@@ -150,6 +154,29 @@ interface MusicBridge {
 
     // ---- catalogue ----
     suspend fun search(q: String): SearchResults = Fixtures.search(q)
+
+    /**
+     * 搜索结果分页。[offset] 是已经拿到的歌曲条数。
+     * 平台不实现时返回空，UI 就只显示第一页。
+     */
+    suspend fun searchPage(q: String, offset: Int, limit: Int = 20): SearchResults = SearchResults()
+
+    /** 从队列移除第 [index] 首；移除的正好是当前曲目时顺延到下一首。 */
+    fun removeFromQueue(index: Int) {}
+
+    /** 清空队列，但保留正在播放的这一首（避免"清空即静音"的意外）。 */
+    fun clearQueue() {}
+
+    /** 播放速度 0.5..2.0。 */
+    fun setPlaybackSpeed(speed: Float) {
+        state.playbackSpeed = speed.coerceIn(.5f, 2f)
+    }
+
+    /** 睡眠定时：minutes 分钟后暂停并清零；0 表示取消。 */
+    fun setSleepTimer(minutes: Int) {}
+
+    /** 把歌曲加入指定歌单；未登录或接口不可用返回 false。 */
+    suspend fun addToPlaylist(playlistId: Long, songId: Long): Boolean = false
     suspend fun newReleases(): List<Playlist> = Fixtures.newReleases
     /** 最新专辑，用于新歌页顶部大卡。 */
     suspend fun newAlbums(): List<Playlist> = emptyList()

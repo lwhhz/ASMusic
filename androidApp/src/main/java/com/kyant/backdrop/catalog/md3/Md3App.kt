@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -119,16 +120,57 @@ val LocalMd3MiniInset = compositionLocalOf { 0.dp }
 @Composable
 fun md3ListBottom(base: Dp = 28.dp): Dp = base + LocalMd3MiniInset.current
 
+/**
+ * 内容区最大宽度。
+ *
+ * MD3 的自适应规范里，展开类窗口（≥840dp）应限制阅读宽度，否则平板/折叠屏上
+ * 一行文字会拉到 1200dp，扫视成本极高。这里取 840dp 作为上限并居中，
+ * 手机竖屏（<840dp）完全不受影响。
+ */
+private val Md3MaxContentWidth = 840.dp
+
+/** 路由的稳定 key：既给 AnimatedContent 做内容标识，也用来保留页面状态。 */
+private fun Md3Dest.routeKey(): String = when (this) {
+    Md3Dest.Home -> "tab:home"
+    Md3Dest.Discover -> "tab:discover"
+    Md3Dest.Library -> "tab:library"
+    Md3Dest.Stats -> "tab:stats"
+    Md3Dest.Search -> "tab:search"
+    Md3Dest.Settings -> "settings"
+    Md3Dest.SelfCheck -> "selfcheck"
+    is Md3Dest.Song -> "song:$id"
+    is Md3Dest.Playlist -> "playlist:$id"
+    is Md3Dest.Album -> "album:$id"
+    is Md3Dest.Artist -> "artist:$id"
+}
+
 // ---------------------------------------------------------------------------
 // 外壳
 // ---------------------------------------------------------------------------
 
 @Composable
 fun Md3App(config: Md3Config) {
+    // 用 BoxWithConstraints 而不是 LocalConfiguration：Activity 声明了
+    // configChanges=orientation|screenSize，旋转时 Configuration 的分发时机不可靠，
+    // 表现就是「已经横屏了但导航还是底栏」。盒子约束永远反映真实窗口尺寸。
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        Md3AppScaffold(config, maxWidth.value, maxHeight.value)
+    }
+}
+
+@Composable
+private fun Md3AppScaffold(config: Md3Config, widthDp: Float, heightDp: Float) {
     val state = MusicServices.state
     val context = LocalContext.current
-    val configuration = LocalConfiguration.current
-    val wide = configuration.screenWidthDp >= 720
+    // MD3 的逐字开关与播放层共享：进 MD3 时按这里的偏好设置一次，
+    // 否则会沿用经典界面「默认关」的旧值，歌词永远拿不到词级时间轴。
+    LaunchedEffect(Unit) {
+        runCatching { MusicServices.bridge.setWordByWord(config.lyricWordByWord) }
+    }
+    // MD3 窗口尺寸类别：compact < 600dp ≤ medium < 840dp ≤ expanded
+    val wide = widthDp >= 600
+    // 横屏手机高度只有 360dp 左右，带文字的导航轨放不下 5 项，退化成纯图标
+    val railCompact = heightDp < 480
 
     var tab by remember { mutableIntStateOf(if (config.rememberTab) config.lastTab else 0) }
     var stack by remember { mutableStateOf<List<Md3Dest>>(emptyList()) }
@@ -173,6 +215,8 @@ fun Md3App(config: Md3Config) {
     val top = stack.lastOrNull()
     val miniVisible = config.showMiniPlayer && state.currentSong != null && stack.isEmpty()
     val miniInset = if (miniVisible) 84.dp else 0.dp
+    // 按路由 key 保留页面状态：进详情再返回时，列表停在原位而不是跳回顶部。
+    val stateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
 
     Scaffold(
         // 不接管系统栏：页面自己吃状态栏，底栏自己吃导航栏。
@@ -192,7 +236,7 @@ fun Md3App(config: Md3Config) {
                 Row(Modifier.fillMaxSize()) {
                     if (useRail) {
                         NavigationRail(modifier = Modifier.statusBarsPadding()) {
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(if (railCompact) 4.dp else 8.dp))
                             Md3Tabs.forEachIndexed { i, t ->
                                 NavigationRailItem(
                                     selected = tab == i && stack.isEmpty(),
@@ -206,7 +250,10 @@ fun Md3App(config: Md3Config) {
                                             contentDescription = t.label
                                         )
                                     },
-                                    label = { Text(t.label) }
+                                    // 横屏手机高度只有 ~360dp，5 项带文字会溢出：只留图标
+                                    label = if (railCompact) null else {
+                                        { Text(t.label) }
+                                    }
                                 )
                             }
                         }
@@ -217,70 +264,82 @@ fun Md3App(config: Md3Config) {
                             .fillMaxSize()
                             .then(if (stack.isNotEmpty()) Modifier.navigationBarsPadding() else Modifier)
                     ) {
-                        AnimatedContent(
-                            targetState = top ?: listOf(
-                                Md3Dest.Home, Md3Dest.Discover, Md3Dest.Library,
-                                Md3Dest.Stats, Md3Dest.Search
-                            )[tab],
-                            transitionSpec = {
-                                val isPush = targetState is Md3Dest.Song ||
-                                    targetState is Md3Dest.Playlist ||
-                                    targetState is Md3Dest.Album ||
-                                    targetState is Md3Dest.Artist ||
-                                    targetState is Md3Dest.Settings ||
-                                    targetState is Md3Dest.SelfCheck
-                                if (isPush) {
-                                    (slideInHorizontally(tween(260)) { it / 5 } + fadeIn(tween(200))) togetherWith
-                                        fadeOut(tween(140))
-                                } else {
-                                    fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                        // 内容居中并限制宽度：平板上不让一行文字横跨 1200dp。
+                        // 遮罩与胶囊必须跟着同一宽度，否则会与内容脱节。
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                            Box(Modifier.widthIn(max = Md3MaxContentWidth).fillMaxHeight()) {
+                                AnimatedContent(
+                                    targetState = top ?: listOf(
+                                        Md3Dest.Home, Md3Dest.Discover, Md3Dest.Library,
+                                        Md3Dest.Stats, Md3Dest.Search
+                                    )[tab],
+                                    contentKey = { it.routeKey() },
+                                    transitionSpec = {
+                                        val isPush = targetState is Md3Dest.Song ||
+                                            targetState is Md3Dest.Playlist ||
+                                            targetState is Md3Dest.Album ||
+                                            targetState is Md3Dest.Artist ||
+                                            targetState is Md3Dest.Settings ||
+                                            targetState is Md3Dest.SelfCheck
+                                        if (isPush) {
+                                            (slideInHorizontally(tween(260)) { it / 5 } + fadeIn(tween(200))) togetherWith
+                                                fadeOut(tween(140))
+                                        } else {
+                                            fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                                        }
+                                    },
+                                    label = "md3-nav"
+                                ) { dest ->
+                                    stateHolder.SaveableStateProvider(dest.routeKey()) {
+                                        Md3Route(
+                                            dest = dest,
+                                            config = config,
+                                            scrolls = scrolls,
+                                            onPush = ::push,
+                                            onPop = ::pop,
+                                            onTab = { tab = it },
+                                            onQueue = { showQueue = true },
+                                            onRestart = { restartApp() }
+                                        )
+                                    }
                                 }
-                            },
-                            label = "md3-nav"
-                        ) { dest ->
-                            Md3Route(
-                                dest = dest,
-                                config = config,
-                                scrolls = scrolls,
-                                onPush = ::push,
-                                onPop = ::pop,
-                                onTab = { tab = it },
-                                onQueue = { showQueue = true },
-                                onRestart = { restartApp() }
+                            }
+                        }
+
+                        // 状态栏遮罩：列表滚上去时图标不会糊在亮色封面上
+                        if (stack.isEmpty()) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopCenter)
+                                    .widthIn(max = Md3MaxContentWidth)
+                                    .fillMaxWidth()
+                                    .height(md3TopInset() + 10.dp)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                MaterialTheme.colorScheme.surface,
+                                                MaterialTheme.colorScheme.surface,
+                                                MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+                                            )
+                                        )
+                                    )
                             )
                         }
-                    }
-                }
 
-                // 状态栏遮罩：列表滚上去时图标不会糊在亮色封面上
-                if (stack.isEmpty()) {
-                    Box(
-                        Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .height(md3TopInset() + 10.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        MaterialTheme.colorScheme.surface,
-                                        MaterialTheme.colorScheme.surface,
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0f)
-                                    )
-                                )
-                            )
-                    )
-                }
-
-                // 悬浮迷你胶囊：内容从它下面穿过去
-                if (miniVisible) {
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
-                    ) {
-                        Md3MiniPlayer(onOpen = {
-                            state.currentSong?.let { push(Md3Dest.Song(it.id)) }
-                        })
+                        // 悬浮迷你胶囊：内容从它下面穿过去
+                        if (miniVisible) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .widthIn(max = Md3MaxContentWidth)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Md3MiniPlayer(onOpen = {
+                                    state.currentSong?.let { push(Md3Dest.Song(it.id)) }
+                                })
+                            }
+                        }
                     }
                 }
             }
@@ -338,6 +397,7 @@ private fun Md3Route(
             scroll = scrolls[3]
         )
         Md3Dest.Search -> Md3SearchScreen(
+            config = config,
             onOpenSong = { onPush(Md3Dest.Song(it)) },
             onOpenPlaylist = { id, name -> onPush(Md3Dest.Playlist(id, name)) },
             onOpenArtist = { id, name -> onPush(Md3Dest.Artist(id, name)) },
