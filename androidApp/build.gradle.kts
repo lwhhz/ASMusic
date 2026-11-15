@@ -14,8 +14,8 @@ android {
         applicationId = "com.asmusic.app"
         minSdk = 23
         targetSdk = 37
-        versionCode = 80
-        versionName = "1.3.67"
+        versionCode = 81
+        versionName = "1.3.68"
         androidResources.localeFilters += arrayOf("en")
     }
 
@@ -72,6 +72,10 @@ android {
             useLegacyPackaging = true
         }
         jniLibs {
+            // 必须是 true：Node 是以**子进程**方式跑的（exec libnode_exec.so），
+            // 只有解压到 nativeLibraryDir 才能执行。改成 false 会变成直接从 APK 映射，
+            // 目录里没有文件，JS 音源整体失效（实测 4 项自检失败）。
+            // 16 KB 页兼容靠 ELF 段对齐保证，见 scripts/align-elf-16kb.py。
             useLegacyPackaging = true
         }
     }

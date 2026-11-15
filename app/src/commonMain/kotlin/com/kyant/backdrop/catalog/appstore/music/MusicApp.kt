@@ -549,7 +549,11 @@ fun MusicApp() {
                 }
             }
             val onDetail = topPage?.startsWith("s:") == true
-            val hideTabs = onDetail && state.detailHideTabs
+            // 从设置面板推出的子页（f: 参数页 / x: 全面自检）必须盖住底栏：
+            // 设置面板本身不透明，它的子页却让底栏浮在最上层，看起来就像底栏自己冒出来了。
+            val inSettingsChild = topPage?.startsWith("f:") == true ||
+                topPage?.startsWith("x:") == true
+            val hideTabs = if (onDetail) state.detailHideTabs else inSettingsChild
             val tabsAlpha by animateFloatAsState(
                 targetValue = if (hideTabs) 0f else 1f,
                 animationSpec = tween(260),

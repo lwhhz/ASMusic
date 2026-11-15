@@ -87,13 +87,17 @@ node build.mjs        # 输出到 androidApp/src/main/assets/amll/
 | `libnode_exec.so` | ~4.5 KB 瘦壳，`main()` 只调 `node::Start()`，让 libnode 以独立子进程运行 |
 | `libc++_shared.so` | libnode 的 C++ 运行时依赖 |
 
-三者必须成套（同一构建、同一 ABI），不能从官方 nodejs-mobile release 里单独取——官方 zip 只有 `libnode.so`，且同一包里含多个 ABI，按文件名拷会互相覆盖。它们不进版本库（见 `.gitignore`），clone 后跑一次：
+三者必须成套（同一构建、同一 ABI），不能从官方 nodejs-mobile release 里单独取——官方 zip 只有 `libnode.so`，且同一包里含多个 ABI，按文件名拷会互相覆盖。它们**已在版本库里**，clone 后即可编译；若缺失可用 `./scripts/fetch-node-libs.sh` 从发布 APK 里整取一套。
+
+缺这三个文件时 App 仍可编译运行，只是「JS 音乐源脚本」不可用（设置 → 全面自检 会报「缺少 libnode_exec.so」）。
+
+**16 KB 页对齐**：Android 15+ 的 16 KB 页设备要求每个 `.so` 的 `PT_LOAD` 段按 16 KB 对齐（`p_align ≥ 0x4000`，且 `p_offset ≡ p_vaddr (mod 16384)`）。`libnode.so` 是官方 4 KB 构建，仓库里的这一份已用 `scripts/align-elf-16kb.py` 重排过（只移动文件偏移、不改虚拟地址与段内容），并在真机上验证 node 可正常执行。替换该文件后请重跑：
 
 ```bash
-./scripts/fetch-node-libs.sh    # 从发布 APK 里提取整套
+python scripts/align-elf-16kb.py --check androidApp/src/main/jniLibs/arm64-v8a/libnode.so
 ```
 
-缺这三个文件时 App 仍可编译运行，只是「JS 音乐源脚本」不可用（设置 → 自检 会报「缺少 libnode_exec.so」）。
+注意 `jniLibs.useLegacyPackaging` 必须保持 `true`：Node 是以子进程方式运行的（`exec` 那个瘦壳），只有解压到 `nativeLibraryDir` 才能执行；改成 `false` 会让 JS 音源整体失效。
 
 ### 4. 编译
 
