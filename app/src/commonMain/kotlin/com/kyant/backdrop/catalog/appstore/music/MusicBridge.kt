@@ -241,6 +241,11 @@ interface MusicBridge {
     /** Open the OEM battery settings page for this app. */
     fun openBackgroundSettings() {}
 
+    /** 当前界面风格（"Ios" / "Md3"）。切换后需要重启才会生效。 */
+    fun currentUiStyle(): String = "Ios"
+    /** 写入界面风格并重启应用。 */
+    fun requestUiStyle(style: String) {}
+
     /** Health checks shown on the settings page. */
     suspend fun selfCheck(): List<SelfCheckItem> = emptyList()
     /** Rebuilds the Node resolver and source files. */

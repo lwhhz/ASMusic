@@ -1168,6 +1168,26 @@ class MusicBridgeImpl(
         st.fluidDark = value.coerceIn(0f, 1f)
     }
 
+    override fun currentUiStyle(): String =
+        com.kyant.backdrop.catalog.md3.Md3Config.readStyle(appContext).name
+
+    override fun requestUiStyle(style: String) {
+        val target = com.kyant.backdrop.catalog.md3.UiStyle.from(style)
+        com.kyant.backdrop.catalog.md3.Md3Config.writeStyle(appContext, target)
+        // 重启到目标界面：两套 UI 的页面栈/主题不共享，热切会留下脏状态。
+        runCatching {
+            val intent = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+            if (intent != null) {
+                intent.addFlags(
+                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                )
+                appContext.startActivity(intent)
+            }
+        }
+        android.os.Process.killProcess(android.os.Process.myPid())
+    }
+
     override suspend fun selfCheck(): List<SelfCheckItem> = withContext(Dispatchers.IO) {
         checkRuntime()
     }

@@ -14,8 +14,8 @@ android {
         applicationId = "com.asmusic.app"
         minSdk = 23
         targetSdk = 37
-        versionCode = 81
-        versionName = "1.3.68"
+        versionCode = 90
+        versionName = "2.0.0"
         androidResources.localeFilters += arrayOf("en")
     }
 
@@ -88,6 +88,20 @@ android {
     }
 }
 
+// Compose 版本对齐：Material3 1.4.0 的传递依赖指向 compose 1.8.x，
+// 而本工程（CMP 1.12.2）实际用的是 androidx compose 1.12.1，离线环境也只缓存了这一套。
+// 统一强制到 1.12.1，避免同时拉两套不存在的元数据。
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group.startsWith("androidx.compose") &&
+            !requested.name.startsWith("material3") &&
+            !requested.name.startsWith("material-icons")
+        ) {
+            useVersion("1.12.1")
+        }
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -105,4 +119,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.5.1")
     // Importable JS music-source plugins
     implementation("org.mozilla:rhino:1.7.15")
+    // MD3 界面层：官方 Material 3 组件与官方图标集（Apache-2.0）
+    implementation("androidx.compose.ui:ui:1.12.1")
+    implementation("androidx.compose.foundation:foundation:1.12.1")
+    implementation("androidx.compose.material3:material3:1.4.0")
+    implementation("androidx.compose.material:material-icons-extended:1.7.8")
 }

@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
@@ -99,7 +100,18 @@ class MainActivity : ComponentActivity() {
                     fontScale = baseDensity.fontScale
                 )
             ) {
-                MusicApp()
+                // 两套 UI 完全独立：经典（iOS 风格）走原来的 MusicApp，
+                // Material 3 走 md3 包里的新外壳。风格在启动时读取一次，
+                // 切换后要求重启 —— 这样两套页面栈、动画与主题都不必互相迁就。
+                val md3Config = remember { com.kyant.backdrop.catalog.md3.Md3Config(applicationContext) }
+                val style = remember { com.kyant.backdrop.catalog.md3.Md3Config.readStyle(applicationContext) }
+                if (style == com.kyant.backdrop.catalog.md3.UiStyle.Md3) {
+                    com.kyant.backdrop.catalog.md3.Md3Theme(md3Config, wide = false) {
+                        com.kyant.backdrop.catalog.md3.Md3App(md3Config)
+                    }
+                } else {
+                    MusicApp()
+                }
             }
         }
     }

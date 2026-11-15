@@ -73,6 +73,7 @@ fun SettingsSheet(
     var checkOpen by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var checkItems by remember { mutableStateOf<List<SelfCheckItem>>(emptyList()) }
+    var stylePick by remember { mutableStateOf(false) }
     val checkScope = rememberCoroutineScope()
     fun runCheck(repair: Boolean) {
         checkOpen = true
@@ -264,6 +265,11 @@ fun SettingsSheet(
             Spacer(Modifier.height(22.dp))
             GroupLabel("维护")
             SheetGroup {
+                SheetValueRow(
+                    "界面风格",
+                    if (MusicServices.bridge.currentUiStyle() == "Md3") "Material 3" else "经典（iOS）"
+                ) { stylePick = true }
+                SheetDivider()
                 SheetLinkRow("软件全面自检", onFullSelfCheck)
                 SheetDivider()
                 SheetLinkRow("自检与修复", { runCheck(false) })
@@ -282,6 +288,17 @@ fun SettingsSheet(
                 logoutConfirm = false
                 onLogout()
             }
+        )
+    }
+
+    if (stylePick) {
+        UiStyleDialog(
+            current = MusicServices.bridge.currentUiStyle(),
+            onPick = {
+                stylePick = false
+                MusicServices.bridge.requestUiStyle(it)
+            },
+            onDismiss = { stylePick = false }
         )
     }
 
@@ -514,4 +531,62 @@ private fun Chevron() {
         modifier = Modifier.size(13.dp),
         colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(AS.Text3)
     )
+}
+
+
+/**
+ * 界面风格选择。两套 UI 的组件库不同（经典用自绘毛玻璃，Material 3 用 androidx.material3），
+ * 因此不做热切换：写入偏好后直接重启进程，保证主题与页面栈都是干净的。
+ */
+@Composable
+private fun UiStyleDialog(
+    current: String,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        "Ios" to ("经典（iOS）" to "毛玻璃、胶囊、大字标题"),
+        "Md3" to ("Material 3" to "语义色、动态取色、弹簧动效")
+    )
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .width(300.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(AS.CardElevated)
+        ) {
+            Txt(
+                "界面风格",
+                AS.rowTitle().copy(fontSize = 17.sp, textAlign = TextAlign.Center),
+                Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 4.dp)
+            )
+            Txt(
+                "两套界面各自独立设置，切换后应用会重启。",
+                AS.caption().copy(textAlign = TextAlign.Center),
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp)
+            )
+            options.forEach { (key, pair) ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .tap { onPick(key) }
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Txt(pair.first, AS.body().copy(fontSize = 15.sp))
+                        Txt(pair.second, AS.caption())
+                    }
+                    if (current == key) {
+                        Txt("当前", AS.caption().copy(color = AS.Blue))
+                    }
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(AS.Separator))
+            }
+            Box(
+                Modifier.fillMaxWidth().height(46.dp).tap(onDismiss),
+                contentAlignment = Alignment.Center
+            ) { Txt("取消", AS.subtitle()) }
+        }
+    }
 }

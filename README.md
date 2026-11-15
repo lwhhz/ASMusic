@@ -99,6 +99,26 @@ python scripts/align-elf-16kb.py --check androidApp/src/main/jniLibs/arm64-v8a/l
 
 注意 `jniLibs.useLegacyPackaging` 必须保持 `true`：Node 是以子进程方式运行的（`exec` 那个瘦壳），只有解压到 `nativeLibraryDir` 才能执行；改成 `false` 会让 JS 音源整体失效。
 
+### 3.5 两套界面风格
+
+应用内置两套完全独立的 UI，启动时读取偏好决定用哪一套，切换后需要重启：
+
+| 风格 | 说明 | 设置入口 |
+|---|---|---|
+| 经典（iOS） | 毛玻璃、胶囊、大字标题；原有的界面与设置 | 设置 → 维护 → 界面风格 |
+| Material 3 | `androidApp/.../md3/`：语义色 + 动态取色 + 弹簧动效 | 设置 → 界面风格 |
+
+Material 3 那套是独立实现，不复用经典界面的布局：
+
+- **主题引擎**：种子色 → OKLCH → 26 个语义角色（含 5 档 surface 容器），支持 6 种配色风格、3 种取色来源（跟随封面 / 手动调色相彩度 / 10 色预设）、3 档对比度、纯黑背景。
+- **形状与排版**：圆润度（0–100 驱动 5 档圆角）、布局密度、字号缩放、3 档动效（标准 / 表达力 / 关闭）。
+- **布局**：底部导航栏 / 侧边导航轨（按宽度自动切换）、首页卡片密度、播放页歌词优先或封面优先、迷你播放条开关。
+- **图标**：全部来自官方 `androidx.compose.material:material-icons-extended`（Apache-2.0），没有自绘图标。
+- **配置隔离**：MD3 的设置单独存在 `md3_app.xml`，与经典界面的 `music_app.xml` 互不影响。
+
+> 依赖说明：Material 3 用 `androidx.compose.material3:material3:1.4.0`，并用
+> `resolutionStrategy` 把 compose 系依赖统一到 1.12.1（与本工程 CMP 1.12.2 对齐）。
+
 ### 4. 编译
 
 ```bash
