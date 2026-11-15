@@ -80,7 +80,8 @@ fun SongDetailPage(
         mutableStateOf(state.currentSong?.takeIf { it.id == songId } ?: Fixtures.song(songId))
     }
     var lines by remember(songId) { mutableStateOf(Fixtures.lyric(songId)) }
-    var comments by remember(songId) { mutableStateOf(Fixtures.comments(songId)) }
+    // 不再预填占位评论：没取到就是空的，评论区显示「暂无评论」。
+    var comments by remember(songId) { mutableStateOf<List<CommentItem>>(emptyList()) }
     // Netease-side 红心 / comment counts for the stats row.
     var social by remember(songId) { mutableStateOf<SongSocial?>(null) }
 
@@ -95,7 +96,7 @@ fun SongDetailPage(
                 runCatching { bridge.lyric(songId) }.getOrDefault(Fixtures.lyric(songId))
             }
             val commentsTask = async {
-                runCatching { bridge.comments(songId) }.getOrDefault(Fixtures.comments(songId))
+                runCatching { bridge.comments(songId) }.getOrDefault(emptyList())
             }
             val socialTask = async {
                 runCatching { bridge.songSocial(songId) }.getOrNull()
@@ -137,10 +138,15 @@ fun SongDetailPage(
     val coverUrl = state.currentSong?.takeIf { it.id == current.id }?.coverUrl
         ?: current.coverUrl
     // One source of truth for the stats row and the comment header.
-    val commentTotal = when {
-        social?.hasComments == true -> social?.commentCount ?: 0
-        current.commentCount > 0 -> current.commentCount
-        else -> comments.size
+    // `null` = 没有这项数据（新歌接口返 0 或字段缺失）。此时统计行显示 "-"，
+    // 评论区显示「暂无评论」，而不是用占位评论的条数凑一个数字出来。
+    val commentTotal: Int? = run {
+        val known = when {
+            social?.hasComments == true -> social?.commentCount
+            current.commentCount > 0 -> current.commentCount
+            else -> null
+        }
+        (known ?: comments.size).takeIf { it > 0 }
     }
     // Four cover colors for the lyric-card gradients; refreshed when the song/cover changes.
     var cardPalette by remember(current.id) { mutableStateOf<List<Color>>(emptyList()) }
@@ -362,37 +368,56 @@ fun SongDetailPage(
             Spacer(Modifier.height(22.dp))
 
             // Comments: the header opens the full glass sheet; each truncated card
-            // opens the same style sheet with the complete comment.
+            // opens the same style sheet with the complete comment. A song without
+            // comments shows a plain 「暂无评论」 instead of placeholder cards.
+            val hasComments = comments.isNotEmpty()
             Row(
                 Modifier
                     .padding(horizontal = 16.dp)
                     .fillMaxWidth()
-                    .tap { onOpenComments(commentTotal) },
+                    .then(
+                        if (hasComments) {
+                            Modifier.tap { onOpenComments(commentTotal ?: 0) }
+                        } else {
+                            Modifier
+                        }
+                    ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Txt("评论", AS.sectionTitle())
-                Spacer(Modifier.width(6.dp))
-                ChevronRight(size = 13.dp)
+                if (hasComments) {
+                    Spacer(Modifier.width(6.dp))
+                    ChevronRight(size = 13.dp)
+                }
                 Spacer(Modifier.weight(1f))
                 Txt(
-                    "共 ${formatCount(commentTotal)} 条",
+                    if (hasComments) "共 ${formatCount(commentTotal ?: comments.size)} 条" else "暂无评论",
                     AS.caption().copy(color = AS.Text3)
                 )
             }
-            Spacer(Modifier.height(6.dp))
-            Txt(
-                "查看全部评论",
-                AS.subtitle(),
-                Modifier
-                    .padding(horizontal = 16.dp)
-                    .tap { onOpenComments(commentTotal) }
-            )
-            Spacer(Modifier.height(16.dp))
-            Row(
-                Modifier.padding(start = 16.dp).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                comments.forEach { CommentCard(it, onOpen = { onOpenComment(it) }) }
+            if (hasComments) {
+                Spacer(Modifier.height(6.dp))
+                Txt(
+                    "查看全部评论",
+                    AS.subtitle(),
+                    Modifier
+                        .padding(horizontal = 16.dp)
+                        .tap { onOpenComments(commentTotal ?: 0) }
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    Modifier.padding(start = 16.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    comments.forEach { CommentCard(it, onOpen = { onOpenComment(it) }) }
+                }
+            } else {
+                Spacer(Modifier.height(10.dp))
+                Txt(
+                    "还没有人评论这首歌",
+                    AS.subtitle().copy(color = AS.Text3),
+                    Modifier.padding(horizontal = 16.dp)
+                )
             }
 
             Spacer(Modifier.height(28.dp))
@@ -626,17 +651,19 @@ private fun ArtistChoiceDialog(
 
 /**
  * Fixed four-cell stats row under the cover: 风格 / 红心 / 评论 / 专辑曲目.
- * The heart and comment counts come from Netease when reachable; local metadata
- * is only a fallback. No scrolling — the four cells always divide the width evenly.
+ * Counts come from Netease; when a song has no such data (new uploads report 0 or
+ * omit the field) the cell shows "-" rather than a number that contradicts the
+ * empty comment section below.
  */
 @Composable
-private fun SongStatsRow(song: Song, social: SongSocial?, commentTotal: Int) {
+private fun SongStatsRow(song: Song, social: SongSocial?, commentTotal: Int?) {
+    val likeCount = social?.takeIf { it.hasLike }?.likeCount ?: 0
     val likeText = when {
-        social?.hasLike == true -> formatCount(social.likeCount)
+        likeCount > 0 -> formatCount(likeCount)
         song.favoriteCount > 0 -> formatCount(song.favoriteCount)
-        else -> "—"
+        else -> "-"
     }
-    val commentText = formatCount(commentTotal)
+    val commentText = commentTotal?.takeIf { it > 0 }?.let { formatCount(it) } ?: "-"
     Row(
         Modifier
             .fillMaxWidth()

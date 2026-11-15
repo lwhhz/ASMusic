@@ -6,6 +6,8 @@ package com.kyant.backdrop.catalog.appstore
  */
 interface PlatformBridge {
     fun share(text: String)
+    /** Copy plain text to the system clipboard (diagnostics export). */
+    fun copy(text: String) {}
     fun loadInstalled(): Set<String>
     fun saveInstalled(ids: Set<String>)
 }

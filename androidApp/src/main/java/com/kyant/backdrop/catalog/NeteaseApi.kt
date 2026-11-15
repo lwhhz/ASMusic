@@ -252,7 +252,13 @@ class NeteaseApi(private val config: AppConfig) : MusicApi {
         val yrc = j.optJSONObject("yrc")?.optString("lyric", "").orEmpty()
         val tv = j.optJSONObject("tlyric")?.optString("lyric", "").orEmpty()
         var lines = parseYrc(yrc).ifEmpty { parseLrc(raw) }
-        if (lines.size >= 2 && tv.isNotBlank()) lines = withTranslations(lines, tv)
+        if (lines.size < 2) {
+            // 纯文本歌词（新上架的歌常见）：没有时间轴，按行等分兜底。
+            val duration = com.kyant.backdrop.catalog.appstore.music.MusicServices.state
+                .currentSong?.takeIf { it.id == id }?.durationMs ?: 240_000L
+            return parsePlainLyric(raw, duration).ifEmpty { null }
+        }
+        if (tv.isNotBlank()) lines = withTranslations(lines, tv)
         // A single metadata line (e.g. "[00:00.000] 作词 : ...") is not a usable lyric.
         return lines.takeIf { it.size >= 2 }
     }

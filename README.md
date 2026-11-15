@@ -79,8 +79,21 @@ node build.mjs        # 输出到 androidApp/src/main/assets/amll/
 
 ### 3. 原生运行时（Node.js Mobile）
 
-`androidApp/src/main/jniLibs/arm64-v8a/` 下需要 nodejs-mobile 的 `.so`。
-这些 `.so` 已直接包含在仓库中（约 69 MB），clone 后即可编译。
+`androidApp/src/main/jniLibs/arm64-v8a/` 下需要三个 `.so`，合计约 50 MB：
+
+| 文件 | 作用 |
+|---|---|
+| `libnode.so` | nodejs-mobile v18 运行时本体 |
+| `libnode_exec.so` | ~4.5 KB 瘦壳，`main()` 只调 `node::Start()`，让 libnode 以独立子进程运行 |
+| `libc++_shared.so` | libnode 的 C++ 运行时依赖 |
+
+三者必须成套（同一构建、同一 ABI），不能从官方 nodejs-mobile release 里单独取——官方 zip 只有 `libnode.so`，且同一包里含多个 ABI，按文件名拷会互相覆盖。它们不进版本库（见 `.gitignore`），clone 后跑一次：
+
+```bash
+./scripts/fetch-node-libs.sh    # 从发布 APK 里提取整套
+```
+
+缺这三个文件时 App 仍可编译运行，只是「JS 音乐源脚本」不可用（设置 → 自检 会报「缺少 libnode_exec.so」）。
 
 ### 4. 编译
 

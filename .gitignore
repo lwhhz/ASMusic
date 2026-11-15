@@ -20,8 +20,12 @@ captures/
 # --- release artifacts (ship them as GitHub Releases, not in git) ---
 dist/
 
-# --- Node.js native runtime (fetch with scripts/fetch-node-libs.sh) ---
-androidApp/src/main/jniLibs/**/*.so
+# --- Node.js native runtime ---
+# 三个 .so（libnode.so / libnode_exec.so / libc++_shared.so，合计约 50 MB）**必须入库**。
+# 它们成套使用：官方 nodejs-mobile release 只提供 libnode.so，libnode_exec.so 只有
+# 4.5 KB，是 cpp/node-main.cpp 链接 libnode.so 构建出来的瘦壳，从别处拼不出来。
+# 不入库的话，clone 下来能编译、能安装，但「JS 音乐源脚本」会整体不可用。
+# scripts/fetch-node-libs.sh 保留，用于从发布 APK 里恢复这一套。
 
 # --- qa screenshots / scratch ---
 qa/

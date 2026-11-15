@@ -13,6 +13,7 @@ import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.content.FileProvider
@@ -35,6 +36,7 @@ import com.kyant.backdrop.catalog.appstore.music.PlaylistKind
 import com.kyant.backdrop.catalog.appstore.music.QrStatus
 import com.kyant.backdrop.catalog.appstore.music.ScriptInfo
 import com.kyant.backdrop.catalog.appstore.music.SelfCheckItem
+import com.kyant.backdrop.catalog.appstore.music.SelfCheckLevel
 import com.kyant.backdrop.catalog.appstore.music.SearchResults
 import com.kyant.backdrop.catalog.appstore.music.Song
 import com.kyant.backdrop.catalog.appstore.music.SongQuality
@@ -408,16 +410,31 @@ class MusicBridgeImpl(
     override suspend fun lyric(id: Long): List<LyricLine> {
         // v2 key: older entries carry neither translations nor karaoke timings.
         val key = "lyric2:$id"
-        // With word-by-word enabled a cached LRC-only entry is useless, so skip it
-        // and fetch once more (the probe then asks for the karaoke version).
         val wantWords = st.wordByWord
-        cache.read(key, TTL_WEEK)?.let { cached ->
+        // A cached entry is usable unless the caller wants karaoke timings and this
+        // entry is known to lack them. "Known" has to include a recorded miss (`nw`):
+        // most songs have no yrc at all, so a plain "has words?" test would reject the
+        // cache forever and put a blocking network round trip in front of every visit.
+        cache.readWithAge(key, TTL_WEEK)?.let { (cached, age) ->
             val value = lyricFromJson(cached)
-            if (value.isNotEmpty() && (!wantWords || value.any { it.words.isNotEmpty() })) {
-                refreshInBackground(key, fetch = { api.lyric(id) }, encode = { lyricToJson(it) })
+            val hasWords = value.any { it.words.isNotEmpty() }
+            val wordsProbedEmpty = cached.optBoolean("nw", false)
+            if (value.isNotEmpty() && (!wantWords || hasWords || wordsProbedEmpty)) {
+                // Revalidate by age instead of on every hit: the TTL already bounds how
+                // old an entry may be, so refreshing on each read was pure duplicate
+                // traffic. A plain-text entry is re-probed sooner because Netease
+                // usually attaches timings to a new song within days.
+                val refreshAfter = if (hasWords) TTL_WEEK / 2 else TTL_HOUR * 6
+                Log.d(
+                    "ASMusicLyric",
+                    "hit id=$id age=${age / 1000}s words=$hasWords nw=$wordsProbedEmpty" +
+                        if (age > refreshAfter) " revalidate" else ""
+                )
+                if (age > refreshAfter) refreshLyricInBackground(id)
                 return value
             }
         }
+        Log.d("ASMusicLyric", "fetch id=$id wantWords=$wantWords")
         var fresh = api.lyric(id)
         // No word-level timings from Netease: try the opt-in Kugou KRC source.
         if (st.kugouKrcEnabled && (fresh.isNullOrEmpty() || fresh.none { it.words.isNotEmpty() })) {
@@ -438,12 +455,42 @@ class MusicBridgeImpl(
                 if (krc.isNotEmpty()) fresh = krc
             }
         }
-        if (!fresh.isNullOrEmpty()) cache.write(key, lyricToJson(fresh))
+        if (!fresh.isNullOrEmpty()) {
+            cache.write(
+                key,
+                lyricToJson(
+                    fresh,
+                    wordsProbedEmpty = wantWords && fresh.none { it.words.isNotEmpty() }
+                )
+            )
+        }
         cache.read(key)?.let { stale ->
             val value = lyricFromJson(stale)
             if (value.isNotEmpty()) return value
         }
         return fresh ?: Fixtures.lyric(id)
+    }
+
+    /**
+     * Quiet re-fetch of a cached lyric. Never downgrades: a plain-text result will not
+     * overwrite an entry that already carries word timings.
+     */
+    private fun refreshLyricInBackground(id: Long) {
+        val key = "lyric2:$id"
+        scope.launch(Dispatchers.IO) {
+            val fresh = runCatching { api.lyric(id) }.getOrNull().orEmpty()
+            if (fresh.isEmpty()) return@launch
+            val hasWords = fresh.any { it.words.isNotEmpty() }
+            Log.d("ASMusicLyric", "revalidate id=$id words=$hasWords")
+            if (!hasWords) {
+                val cached = cache.read(key)?.let { lyricFromJson(it) }.orEmpty()
+                if (cached.any { it.words.isNotEmpty() }) return@launch
+            }
+            cache.write(
+                key,
+                lyricToJson(fresh, wordsProbedEmpty = st.wordByWord && !hasWords)
+            )
+        }
     }
 
     override suspend fun comments(id: Long): List<CommentItem> {
@@ -461,7 +508,8 @@ class MusicBridgeImpl(
             val value = commentsFromJson(stale)
             if (value.isNotEmpty()) return value
         }
-        return fresh ?: Fixtures.comments(id)
+        // 没有评论就是没有：不再回落到占位评论，否则新歌会显示几条不存在的热门评论。
+        return fresh.orEmpty()
     }
 
     override suspend fun allComments(id: Long): List<CommentItem> {
@@ -1141,6 +1189,219 @@ class MusicBridgeImpl(
                 file.writeText(script.content)
             }
         }
+    }
+
+    /**
+     * 软件全面自检：逐项跑真实检查（会发网络请求、会启动 Node），供用户手动触发。
+     *
+     * 与 [selfCheck] 的分工：那个只看「音源能不能用」，几毫秒出结果，设置页一点就显示；
+     * 这个要把「出问题时需要知道的一切」都测一遍——环境、网络、接口、账号、播放内核、
+     * 缓存与存储，结果可以复制出来贴给开发者。所以每一条的 detail 都带上具体数值
+     * （版本号、耗时、路径、字节数），而不是一句「正常」。
+     */
+    override suspend fun fullSelfCheck(): List<SelfCheckItem> = withContext(Dispatchers.IO) {
+        val items = mutableListOf<SelfCheckItem>()
+
+        fun add(
+            group: String,
+            label: String,
+            level: SelfCheckLevel,
+            detail: String
+        ) {
+            items += SelfCheckItem(label, level == SelfCheckLevel.Pass, detail, level, group)
+        }
+        fun ok(group: String, label: String, detail: String) =
+            add(group, label, SelfCheckLevel.Pass, detail)
+        fun warn(group: String, label: String, detail: String) =
+            add(group, label, SelfCheckLevel.Warn, detail)
+        fun fail(group: String, label: String, detail: String) =
+            add(group, label, SelfCheckLevel.Fail, detail)
+
+        // ---------------- 运行环境 ----------------
+        val versionName = BuildConfig.VERSION_NAME
+        val versionCode = BuildConfig.VERSION_CODE
+        ok("运行环境", "应用版本", "$versionName ($versionCode)")
+
+        val sdk = Build.VERSION.SDK_INT
+        ok(
+            "运行环境", "系统版本",
+            "Android ${Build.VERSION.RELEASE} · API $sdk · ${Build.MANUFACTURER} ${Build.MODEL}"
+        )
+
+        // jniLibs 只有 arm64-v8a 一份；x86 模拟器上 Node 必然不可用，先把原因写清楚。
+        val arm64 = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
+        if (arm64) {
+            ok("运行环境", "CPU 架构", Build.SUPPORTED_ABIS.joinToString(" / "))
+        } else {
+            warn(
+                "运行环境", "CPU 架构",
+                "${Build.SUPPORTED_ABIS.joinToString(" / ")} · 未提供 arm64-v8a，Node 音源不可用"
+            )
+        }
+
+        val runtime = Runtime.getRuntime()
+        val heapMaxMb = runtime.maxMemory() / 1024 / 1024
+        val heapUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024
+        val heapRatio = if (heapMaxMb > 0) heapUsedMb * 100 / heapMaxMb else 0
+        val heapDetail = "已用 ${heapUsedMb}MB / 上限 ${heapMaxMb}MB（$heapRatio%）"
+        if (heapRatio >= 85) warn("运行环境", "堆内存", "$heapDetail · 接近上限，可能被系统回收")
+        else ok("运行环境", "堆内存", heapDetail)
+
+        // ---------------- 网络与接口 ----------------
+        val host = if (config.directMode) "music.163.com" else {
+            config.serverUrl.removePrefix("https://").removePrefix("http://").substringBefore('/')
+        }
+        val hostLabel = if (config.directMode) "music.163.com" else "代理 $host"
+        val probeStart = System.currentTimeMillis()
+        val hostOk = runCatching {
+            probeHttp.newCall(
+                Request.Builder()
+                    .url(
+                        if (config.directMode) "https://music.163.com/"
+                        else config.serverUrl.ifBlank { "http://127.0.0.1/" }
+                    )
+                    .get()
+                    .build()
+            ).execute().use { it.isSuccessful || it.code in 300..499 }
+        }.getOrDefault(false)
+        val probeMs = System.currentTimeMillis() - probeStart
+        if (hostOk) ok("网络与接口", "域名连通", "$hostLabel · ${probeMs}ms")
+        else fail("网络与接口", "域名连通", "$hostLabel 不可达（${probeMs}ms）")
+
+        val apiStart = System.currentTimeMillis()
+        val probeSong = runCatching { api.songDetail(186016L) }.getOrNull()
+        val apiMs = System.currentTimeMillis() - apiStart
+        if (probeSong != null) {
+            ok(
+                "网络与接口", "网易云接口",
+                "${if (config.directMode) "直连" else "代理"} · ${probeSong.name} · ${apiMs}ms"
+            )
+        } else {
+            fail("网络与接口", "网易云接口", "song/detail 无返回（${apiMs}ms），接口可能被限制")
+        }
+
+        if (config.cookie.isNullOrBlank()) {
+            warn("网络与接口", "账号状态", "未登录 · 仅能匿名搜索与试听")
+        } else {
+            val profileStart = System.currentTimeMillis()
+            val profile = runCatching { api.profile() }.getOrNull()
+            val profileMs = System.currentTimeMillis() - profileStart
+            if (profile != null) {
+                ok("网络与接口", "账号状态", "${profile.nickname} · cookie 有效 · ${profileMs}ms")
+            } else {
+                fail("网络与接口", "账号状态", "cookie 已失效，请重新扫码登录")
+            }
+        }
+
+        // ---------------- 播放内核 ----------------
+        // 注意：这里在 IO 线程上跑，不能碰 ExoPlayer 的状态（必须在其 looper 线程读，
+        // 否则抛 IllegalStateException，只能拿到 -1）。只取实例是否存在 + MusicState
+        // 里已经同步好的快照。
+        val current = st.currentSong
+        val positionText = run {
+            fun fmt(ms: Long): String {
+                val total = (ms / 1000).coerceAtLeast(0)
+                return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
+            }
+            if (current == null) "空闲"
+            else if (st.playing) "播放中 ${fmt(st.positionMs)} / ${fmt(st.durationMs)}"
+            else "已暂停"
+        }
+        val trackText = current?.let { "${it.name} - ${it.artist}" } ?: "当前无歌曲"
+        ok("播放内核", "播放器实例", "ExoPlayer 已创建 · $positionText")
+        ok("播放内核", "当前曲目", "$trackText · 队列 ${queue.size} 首")
+        ok("播放内核", "解析缓存", "${scriptUrlCache.size} 条待用链接（按歌曲+音质缓存 5 分钟）")
+
+        // ---------------- Node 运行时（音源） ----------------
+        val nativeDir = File(appContext.applicationInfo.nativeLibraryDir)
+        listOf("libnode.so", "libnode_exec.so", "libc++_shared.so").forEach { name ->
+            val file = File(nativeDir, name)
+            if (file.exists()) {
+                // 只报大小：完整路径长达三行，会把这个页面撑成两屏。
+                val mb = file.length() / 1024.0 / 1024.0
+                ok("Node 运行时", name, String.format("%.1f MB", mb))
+            } else {
+                fail("Node 运行时", name, "缺失 · 需要重新安装带 jniLibs 的完整包")
+            }
+        }
+
+        val nodeStart = System.currentTimeMillis()
+        val nodeOk = NodeRuntime.ensure(appContext)
+        val nodeMs = System.currentTimeMillis() - nodeStart
+        if (nodeOk) {
+            ok("Node 运行时", "解析服务", "127.0.0.1:32123 健康 · ${nodeMs}ms")
+        } else {
+            fail(
+                "Node 运行时", "解析服务",
+                NodeRuntime.lastError ?: "端口 32123 无响应（${nodeMs}ms）"
+            )
+        }
+
+        // ---------------- 音源与歌词源 ----------------
+        val enabledScripts = config.scripts.filter { it.enabled }
+        val sourcesDir = File(appContext.filesDir, "node_sources")
+        val missing = enabledScripts.count { script ->
+            val safe = script.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+            !File(sourcesDir, "$safe.js").exists()
+        }
+        if (enabledScripts.isEmpty()) {
+            warn("音源与歌词源", "音源脚本", "没有启用的脚本，播放依赖内置接口")
+        } else if (missing == 0) {
+            ok(
+                "音源与歌词源", "音源脚本",
+                "${enabledScripts.size} 个已启用 · ${enabledScripts.joinToString { it.name }}"
+            )
+        } else {
+            fail("音源与歌词源", "音源脚本", "$missing 个脚本文件缺失，可在「自检与修复」里修复")
+        }
+        ok(
+            "音源与歌词源", "歌词源",
+            "TTML ${if (st.amllTtmlEnabled) "开" else "关"} · 酷狗 KRC ${if (st.kugouKrcEnabled) "开" else "关"} · 逐字 ${if (st.wordByWord) "开" else "关"}"
+        )
+
+        // ---------------- 缓存与存储 ----------------
+        val cacheStart = System.currentTimeMillis()
+        val probeKey = "selfcheck:probe"
+        val cacheOk = runCatching {
+            cache.write(probeKey, JSONObject().put("at", cacheStart))
+            cache.read(probeKey)?.optLong("at") == cacheStart
+        }.getOrDefault(false)
+        val cacheMs = System.currentTimeMillis() - cacheStart
+        if (cacheOk) ok("缓存与存储", "缓存读写", "写入并回读成功 · ${cacheMs}ms")
+        else fail("缓存与存储", "缓存读写", "缓存目录不可写，设置里的清理功能会失效")
+
+        val info = runCatching { cache.info() }.getOrNull()
+        if (info != null) {
+            val mb = { bytes: Long -> "${bytes / 1024 / 1024} MB" }
+            ok(
+                "缓存与存储", "缓存占用",
+                "音频 ${mb(info.audioBytes)} · 图像 ${mb(info.imageBytes)} · 数据 ${mb(info.dataBytes)}"
+            )
+        }
+
+        val freeMb = runCatching { appContext.filesDir.usableSpace / 1024 / 1024 }.getOrDefault(-1L)
+        if (freeMb < 0) {
+            warn("缓存与存储", "可用空间", "无法读取")
+        } else if (freeMb < 500) {
+            warn("缓存与存储", "可用空间", "${freeMb}MB · 空间不足，缓存与下载可能失败")
+        } else {
+            ok("缓存与存储", "可用空间", "${freeMb}MB")
+        }
+
+        // ---------------- 权限与后台 ----------------
+        val notificationOk = Build.VERSION.SDK_INT < 33 ||
+            appContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (notificationOk) ok("权限与后台", "通知权限", "系统媒体控制可用")
+        else warn("权限与后台", "通知权限", "通知被关闭，媒体控制与播放状态不可见")
+
+        if (BatteryAssist.isFullyAllowed(appContext)) {
+            ok("权限与后台", "后台常驻", "已允许无限制后台运行")
+        } else {
+            warn("权限与后台", "后台常驻", "建议设为无限制，避免解析服务被回收")
+        }
+
+        items
     }
 
     private fun checkRuntime(): List<SelfCheckItem> {

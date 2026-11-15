@@ -600,9 +600,19 @@ class NeteaseDirect(private val config: AppConfig) : MusicApi {
         val raw = classic.optJSONObject("lrc")?.optString("lyric", "").orEmpty()
         val tv = classic.optJSONObject("tlyric")?.optString("lyric", "").orEmpty()
         var lines = parseLrc(raw)
-        if (lines.size >= 2 && tv.isNotBlank()) lines = withTranslations(lines, tv)
+        if (lines.size < 2) {
+            // 新上架的歌常常只有纯文本歌词（没有任何时间轴），parseLrc 会得到 0 行。
+            // 这里退回"按行等分"的时间轴，让歌词能显示出来，而不是"暂无歌词"。
+            return parsePlainLyric(raw, durationFor(id)).ifEmpty { null }
+        }
+        if (tv.isNotBlank()) lines = withTranslations(lines, tv)
         return lines.takeIf { it.size >= 2 }
     }
+
+    /** 正在播的那首直接用播放器时长，否则给一个常见的默认值。 */
+    private fun durationFor(id: Long): Long =
+        com.kyant.backdrop.catalog.appstore.music.MusicServices.state
+            .currentSong?.takeIf { it.id == id }?.durationMs ?: 240_000L
 
     override suspend fun comments(id: Long): List<CommentItem>? {
         val body = weapi(

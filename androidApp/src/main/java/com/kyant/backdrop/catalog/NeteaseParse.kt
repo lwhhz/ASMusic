@@ -79,6 +79,24 @@ internal fun parseLrc(raw: String): List<LyricLine> {
 }
 
 /**
+ * 纯文本歌词：整段有词，但一行时间轴都没有。
+ *
+ * 网易云对刚上架的新歌通常先只传纯文本，过几天才补 LRC/YRC 时间轴。
+ * 只认 `[mm:ss]` 的 [parseLrc] 会把这类歌词整段丢掉，详情页就显示"暂无歌词"——
+ * 这是"新歌页的新专辑歌曲没有歌词"最常见的成因，不是接口拿不到。
+ *
+ * 这里按行等分整首时长，造一条可用的时间轴：不保证与演唱同步，但歌词能显示、
+ * 能跟着播放滚动。逐字高亮不会生效（words 为空），这一点交给 UI 自然降级。
+ */
+internal fun parsePlainLyric(raw: String, durationMs: Long = 240_000L): List<LyricLine> {
+    val lines = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    if (lines.size < 2) return emptyList()
+    val total = durationMs.coerceIn(30_000L, 900_000L)
+    val span = (total / lines.size).coerceAtLeast(1_200L)
+    return lines.mapIndexed { index, text -> LyricLine(index * span, text) }
+}
+
+/**
  * Karaoke lyric (yrc): `[lineStart,lineDuration](wordStart,wordDur,0)word ...`
  * Every word carries its own timing, which drives the lyric-card sweep.
  */

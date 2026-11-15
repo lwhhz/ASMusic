@@ -98,10 +98,12 @@ private const val NavQualityPrefs = "qprefs"
 private const val NavQueue = "queue"
 private const val NavSongQuality = "qsong"
 private const val NavImmersive = "immersive"
+/** 全面自检是一个整页（带返回与 PageTransition），因此用页面前缀 x:。 */
+private const val NavSelfCheck = "x:selfcheck"
 
 /**
- * true 表示这是一个整页路由（s: 歌曲 / p: 歌单 / a: 专辑 / r: 艺人 / f: 设置子页），
- * false 表示覆盖层（set / qr / cache …）。
+ * true 表示这是一个整页路由（s: 歌曲 / p: 歌单 / a: 专辑 / r: 艺人 / f: 设置子页 /
+ * x: 其它整页），false 表示覆盖层（set / qr / cache / selfcheck …）。
  *
  * "c:"（旧的自定义二级页）已不再产生；显式排除它，好让升级前保存下来的旧栈
  * 不会把一个不存在的页面当成当前页。
@@ -109,7 +111,7 @@ private const val NavImmersive = "immersive"
 private fun String.isNavPage(): Boolean =
     length > 1 && this[1] == ':' &&
         (startsWith("s:") || startsWith("p:") || startsWith("a:") ||
-            startsWith("r:") || startsWith("f:"))
+            startsWith("r:") || startsWith("f:") || startsWith("x:"))
 
 @Composable
 private fun <T> PageTransition(
@@ -171,6 +173,7 @@ fun MusicApp() {
             topPage.startsWith("a:") -> "album"
             topPage.startsWith("r:") -> "artist"
             topPage.startsWith("f:") -> "finetune"
+            topPage.startsWith("x:") -> "selfcheck"
             else -> "tab"
         }
     }
@@ -208,6 +211,7 @@ fun MusicApp() {
     val playlistScroll = androidx.compose.foundation.lazy.rememberLazyListState()
     val artistScroll = rememberScrollState()
     val fineTuneScroll = rememberScrollState()
+    val selfCheckScroll = rememberScrollState()
     val settingsScroll = rememberScrollState()
     val artistNames = remember { HashMap<Long, String>() }
     val scope = rememberCoroutineScope()
@@ -319,6 +323,11 @@ fun MusicApp() {
     fun openFineTune(group: FineTuneGroup) {
         nav = nav + "f:${group.name}"
         scope.launch { fineTuneScroll.scrollTo(0) }
+    }
+
+    fun openSelfCheck() {
+        nav = nav + NavSelfCheck
+        scope.launch { selfCheckScroll.scrollTo(0) }
     }
 
     // Follow playback changes while a song page is open (next/previous, queue jump,
@@ -490,6 +499,9 @@ fun MusicApp() {
                             ?: FineTuneGroup.Appearance
                         FineTunePage(group, fineTuneScroll, ::pop)
                     }
+                    top != null && top.startsWith("x:") -> {
+                        FullSelfCheckPage(selfCheckScroll, ::pop)
+                    }
                 }
             }
         }
@@ -629,7 +641,8 @@ fun MusicApp() {
             },
             onScriptImport = { push(NavScript) },
             onCache = { push(NavCache) },
-            onQuality = { push(NavQualityPrefs) }
+            onQuality = { push(NavQualityPrefs) },
+            onFullSelfCheck = ::openSelfCheck
         )
         // Always composed so the sheet's own slide/fade runs on both open and close;
         // the content is kept while it animates out.

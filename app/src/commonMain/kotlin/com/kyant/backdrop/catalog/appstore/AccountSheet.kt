@@ -64,6 +64,7 @@ fun SettingsSheet(
     onScriptImport: () -> Unit = {},
     onCache: () -> Unit = {},
     onQuality: () -> Unit = {},
+    onFullSelfCheck: () -> Unit = {},
     onOpenFineTune: (com.kyant.backdrop.catalog.appstore.music.FineTuneGroup) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -263,6 +264,8 @@ fun SettingsSheet(
             Spacer(Modifier.height(22.dp))
             GroupLabel("维护")
             SheetGroup {
+                SheetLinkRow("软件全面自检", onFullSelfCheck)
+                SheetDivider()
                 SheetLinkRow("自检与修复", { runCheck(false) })
                 SheetDivider()
                 SheetValueRow("版本", MusicServices.bridge.appVersion.ifBlank { "1.3.62" }, onClick = null)

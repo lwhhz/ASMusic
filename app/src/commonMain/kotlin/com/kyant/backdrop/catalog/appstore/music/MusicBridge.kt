@@ -5,11 +5,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 
-/** Observable app-wide state. The Android implementation writes into it; UI only reads. */
+/** Severity of a self-check row. [Warn] is "runs, but something is off". */
+enum class SelfCheckLevel { Pass, Warn, Fail }
+
+/**
+ * One row of a self-check result.
+ *
+ * [ok] is kept because the quick check dialog only distinguishes pass/fail; the full
+ * self-check page renders [level] instead, which can also express "works but degraded"
+ * (not logged in, no script imported, battery optimisation on …).
+ */
 data class SelfCheckItem(
     val label: String,
     val ok: Boolean,
-    val detail: String
+    val detail: String,
+    val level: SelfCheckLevel = if (ok) SelfCheckLevel.Pass else SelfCheckLevel.Fail,
+    /** Grouping caption on the full self-check page; empty means the default bucket. */
+    val group: String = ""
 )
 
 class MusicState {
@@ -156,7 +168,7 @@ interface MusicBridge {
     suspend fun todayCards(): List<Playlist> = Fixtures.todayCards(state.todayKinds)
     suspend fun songDetail(id: Long): Song? = Fixtures.song(id)
     suspend fun lyric(id: Long): List<LyricLine> = Fixtures.lyric(id)
-    suspend fun comments(id: Long): List<CommentItem> = Fixtures.comments(id)
+    suspend fun comments(id: Long): List<CommentItem> = emptyList()
     /** All comments (up to 100) for the “查看全部评论” sheet. */
     suspend fun allComments(id: Long): List<CommentItem> = comments(id)
     /** Qualities Netease offers for this song and whether the account can play them. */
@@ -233,6 +245,11 @@ interface MusicBridge {
     suspend fun selfCheck(): List<SelfCheckItem> = emptyList()
     /** Rebuilds the Node resolver and source files. */
     suspend fun selfRepair(): List<SelfCheckItem> = emptyList()
+    /**
+     * 软件全面自检：比 [selfCheck] 多查环境、网络、接口、账号、播放内核、缓存与存储。
+     * 只在用户手动点击时执行（会发真实的网络请求，耗时数秒）。
+     */
+    suspend fun fullSelfCheck(): List<SelfCheckItem> = selfCheck()
 
     fun setFluidBlurDp(value: Float) { state.fluidBlurDp = value.coerceIn(0f, 64f) }
     fun setFluidWarp(value: Float) { state.fluidWarp = value.coerceIn(0f, 3f) }

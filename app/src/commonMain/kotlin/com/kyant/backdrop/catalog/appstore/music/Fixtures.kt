@@ -133,7 +133,12 @@ object Fixtures {
         CommentItem(4, "一颗橘子", null, "循环第 27 遍，还是会在副歌部分起鸡皮疙瘩。", 3_190, "上周")
     )
 
-    fun comments(id: Long): List<CommentItem> = comments
+    /**
+     * 占位评论已下线：歌曲没有评论时 UI 直接显示「暂无评论」。
+     * 保留在预览里只用 [comments] 这份样例数据（见 previews），不再作为运行时兜底，
+     * 否则「本来没有评论的新歌」会显示成几条不存在的热门评论。
+     */
+    fun comments(id: Long): List<CommentItem> = emptyList()
 
     val stats = PlayStats(
         totalPlays = 12_480,

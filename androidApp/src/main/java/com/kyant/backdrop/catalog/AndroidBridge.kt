@@ -22,6 +22,16 @@ class AndroidBridge(private val context: Context) : PlatformBridge {
         runCatching { context.startActivity(chooser) }
     }
 
+    override fun copy(text: String) {
+        runCatching {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                as android.content.ClipboardManager
+            clipboard.setPrimaryClip(
+                android.content.ClipData.newPlainText("ASMusic 自检结果", text)
+            )
+        }
+    }
+
     override fun loadInstalled(): Set<String> = runCatching {
         prefs.getStringSet("installed", emptySet())?.toSet() ?: emptySet()
     }.getOrDefault(emptySet())

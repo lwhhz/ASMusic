@@ -98,14 +98,24 @@ class MusicCache(context: Context) {
      * treated as missing; pass [Long.MAX_VALUE] to accept any age (used as an
      * offline fallback when the refresh request fails).
      */
-    suspend fun read(key: String, maxAgeMs: Long = Long.MAX_VALUE): JSONObject? = withContext(Dispatchers.IO) {
+    suspend fun read(key: String, maxAgeMs: Long = Long.MAX_VALUE): JSONObject? =
+        readWithAge(key, maxAgeMs)?.first
+
+    /**
+     * Same as [read] but also reports how old the entry is. Callers that revalidate
+     * in the background need this to throttle by age; without it the only options
+     * are "never refresh" or "refresh on every hit", and the latter puts a network
+     * round trip in front of every cache hit.
+     */
+    suspend fun readWithAge(
+        key: String,
+        maxAgeMs: Long = Long.MAX_VALUE
+    ): Pair<JSONObject, Long>? = withContext(Dispatchers.IO) {
         val envelope = runCatching { JSONObject(fileFor(key).readText()) }.getOrNull()
             ?: return@withContext null
-        if (maxAgeMs != Long.MAX_VALUE) {
-            val age = System.currentTimeMillis() - envelope.optLong("t", 0L)
-            if (age > maxAgeMs) return@withContext null
-        }
-        envelope.optJSONObject("d")
+        val age = System.currentTimeMillis() - envelope.optLong("t", 0L)
+        if (maxAgeMs != Long.MAX_VALUE && age > maxAgeMs) return@withContext null
+        envelope.optJSONObject("d")?.let { it to age }
     }
 
     suspend fun write(key: String, data: JSONObject) = withContext(Dispatchers.IO) {
@@ -482,27 +492,40 @@ internal fun searchFromJson(j: JSONObject?): SearchResults {
     )
 }
 
-internal fun lyricToJson(lines: List<LyricLine>): JSONObject = JSONObject().put(
-    "v", JSONArray().apply {
-        lines.forEach { line ->
-            put(
-                JSONObject().put("t", line.timeMs).put("x", line.text).apply {
-                    line.translation?.let { put("tr", it) }
-                    if (line.words.isNotEmpty()) {
-                        put(
-                            "w",
-                            JSONArray().apply {
-                                line.words.forEach { w ->
-                                    put(JSONArray().put(w.timeMs).put(w.durationMs).put(w.text))
+/**
+ * [wordsProbedEmpty] records that word-level timings were requested but the source had
+ * none. Without it a reader that wants karaoke timings cannot tell "this entry is
+ * incomplete" from "this song has no karaoke version at all", and ends up re-fetching
+ * on every access. Most songs fall in the second bucket.
+ */
+internal fun lyricToJson(
+    lines: List<LyricLine>,
+    wordsProbedEmpty: Boolean = false
+): JSONObject = JSONObject().apply {
+    put(
+        "v",
+        JSONArray().apply {
+            lines.forEach { line ->
+                put(
+                    JSONObject().put("t", line.timeMs).put("x", line.text).apply {
+                        line.translation?.let { put("tr", it) }
+                        if (line.words.isNotEmpty()) {
+                            put(
+                                "w",
+                                JSONArray().apply {
+                                    line.words.forEach { w ->
+                                        put(JSONArray().put(w.timeMs).put(w.durationMs).put(w.text))
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
-    }
-)
+    )
+    if (wordsProbedEmpty) put("nw", true)
+}
 
 internal fun lyricFromJson(j: JSONObject?): List<LyricLine> {
     val arr = j?.optJSONArray("v") ?: return emptyList()
