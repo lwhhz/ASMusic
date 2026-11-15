@@ -1318,8 +1318,11 @@ class MusicBridgeImpl(
             val file = File(nativeDir, name)
             if (file.exists()) {
                 // 只报大小：完整路径长达三行，会把这个页面撑成两屏。
-                val mb = file.length() / 1024.0 / 1024.0
-                ok("Node 运行时", name, String.format("%.1f MB", mb))
+                // 小于 1 MB 用 KB，否则那 4.5 KB 的壳会显示成 "0.0 MB"。
+                val size = file.length()
+                val label = if (size < 1024 * 1024) "${(size + 1023) / 1024} KB"
+                else String.format("%.1f MB", size / 1024.0 / 1024.0)
+                ok("Node 运行时", name, label)
             } else {
                 fail("Node 运行时", name, "缺失 · 需要重新安装带 jniLibs 的完整包")
             }
@@ -1380,12 +1383,17 @@ class MusicBridgeImpl(
         }
 
         val freeMb = runCatching { appContext.filesDir.usableSpace / 1024 / 1024 }.getOrDefault(-1L)
+        val freeText = when {
+            freeMb < 0 -> "无法读取"
+            freeMb >= 10_240 -> String.format("%.1f GB", freeMb / 1024.0)
+            else -> "${freeMb}MB"
+        }
         if (freeMb < 0) {
-            warn("缓存与存储", "可用空间", "无法读取")
+            warn("缓存与存储", "可用空间", freeText)
         } else if (freeMb < 500) {
-            warn("缓存与存储", "可用空间", "${freeMb}MB · 空间不足，缓存与下载可能失败")
+            warn("缓存与存储", "可用空间", "$freeText · 空间不足，缓存与下载可能失败")
         } else {
-            ok("缓存与存储", "可用空间", "${freeMb}MB")
+            ok("缓存与存储", "可用空间", freeText)
         }
 
         // ---------------- 权限与后台 ----------------
